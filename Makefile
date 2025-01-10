@@ -4,7 +4,7 @@ get-requests:
 build:
 	cargo build
 run:
-	cargo run
+	cargo run --quiet
 brun: build run
 
 .PHONY: build run brun get-requests
