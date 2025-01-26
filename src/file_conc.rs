@@ -5,6 +5,11 @@ use std::io::{Read, Write};
 use time::OffsetDateTime;
 use ignore::Walk;
 
+const TEXT_EXTENSIONS: &[&str] = &[
+    "txt", "md", "rs", "py", "js", "json", "yaml", "yml", "toml",
+    "css", "html", "htm", "xml", "csv", "sh", "bash", "conf",
+];
+
 fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn Error>> {
     let mut revwalk = repo.revwalk()?;
     revwalk.push_head()?;
@@ -51,6 +56,9 @@ fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn 
     Ok(())
 }
 
+
+
+
 fn input_files(repo_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> {
     writeln!(output, "\n# Files")?;
 
@@ -66,7 +74,7 @@ fn input_files(repo_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> 
         if path.is_file() {
             if let Some(extension) = path.extension() {
                 let ext = extension.to_string_lossy().to_lowercase();
-                if ext == "py" || ext == "txt" {
+                if !TEXT_EXTENSIONS.contains(&ext.as_str()) {
                     let mut content = String::new();
                     let mut file = File::open(&path)?;
                     file.read_to_string(&mut content)?;
