@@ -74,17 +74,15 @@ fn input_files(repo_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> 
         if path.is_file() {
             if let Some(extension) = path.extension() {
                 let ext = extension.to_string_lossy().to_lowercase();
-                if !TEXT_EXTENSIONS.contains(&ext.as_str()) {
+                if TEXT_EXTENSIONS.contains(&ext.as_str()) {
                     let mut content = String::new();
                     let mut file = File::open(&path)?;
                     file.read_to_string(&mut content)?;
 
                     writeln!(output, "\n## File: {}", path.display())?;
-
-                    write!(output, "{}", content)?;
-
+                    write!(output, "{}\n", content)?;
                     writeln!(output)?;
-                }
+                } 
             }
         }
     }
