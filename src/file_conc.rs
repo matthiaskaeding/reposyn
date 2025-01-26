@@ -1,16 +1,19 @@
 use git2::Repository;
 use std::error::Error;
-use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
 use time::OffsetDateTime;
+use ignore::Walk;
+
+const TEXT_EXTENSIONS: &[&str] = &[
+    "txt", "md", "rs", "py", "js", "json", "yaml", "yml", "toml",
+    "css", "html", "htm", "xml", "csv", "sh", "bash", "conf",
+];
 
 fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn Error>> {
-    // Setup revwalk to iterate through commits
     let mut revwalk = repo.revwalk()?;
     revwalk.push_head()?;
 
-    // Get total commits and timestamps
     let mut count = 0;
     let mut first_time = None;
     let mut latest_time = None;
@@ -20,7 +23,6 @@ fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn 
         let commit = repo.find_commit(commit_id?)?;
         let time = commit.time().seconds();
 
-        // Update latest time (first commit in walk)
         if count == 0 {
             latest_time = Some(time);
         }
@@ -30,7 +32,6 @@ fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn 
             }
         }
 
-        // Always update first time (will end up with last commit in walk)
         first_time = Some(time);
         count += 1;
     }
@@ -49,40 +50,39 @@ fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn 
 
     writeln!(output, "# Last three commit messages")?;
     for (i, msg) in recent_messages.iter().enumerate() {
-        writeln!(output, "## Commit msg({})\n{}\n", i.to_string(), msg)?;
+        writeln!(output, "### Commit msg({})\n{}", i.to_string(), msg)?;
     }
 
     Ok(())
 }
 
+
+
+
 fn input_files(repo_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> {
-    // Read the directory
-    let entries = fs::read_dir(repo_dir)?;
+    writeln!(output, "# Files")?;
 
-    // Process each file in the directory
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
+    for entry in Walk::new(repo_dir) {
+        let path = match entry {
+            Ok(entry) => entry.path().to_path_buf(),
+            Err(err) => {
+                println!("ERROR: {}", err);
+                continue;
+            }
+        };
 
-        // Check if it's a file and has the correct extension
         if path.is_file() {
             if let Some(extension) = path.extension() {
                 let ext = extension.to_string_lossy().to_lowercase();
-                if ext == "py" || ext == "txt" {
-                    // Read the file content
+                if TEXT_EXTENSIONS.contains(&ext.as_str()) {
                     let mut content = String::new();
                     let mut file = File::open(&path)?;
                     file.read_to_string(&mut content)?;
 
-                    // Write file name as a comment
                     writeln!(output, "\n## File: {}", path.display())?;
-
-                    // Write the content
-                    write!(output, "{}", content)?;
-
-                    // Add a newline for separation
+                    write!(output, "{}\n", content)?;
                     writeln!(output)?;
-                }
+                } 
             }
         }
     }
@@ -90,18 +90,15 @@ fn input_files(repo_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
-pub fn concatenate_files(repo_dir: &str, output_file: &str) -> Result<(), Box<dyn Error>> {
-    // Get repo
+pub fn concatenate_files(repo_dir: &str) -> Result<(), Box<dyn Error>> {
     let repo = match Repository::open(repo_dir) {
         Ok(repo) => repo,
         Err(e) => panic!("failed to open: {}", e),
     };
 
-    // Create or truncate the output file
-    let mut output = File::create(output_file)?;
+    let mut output = File::create("repo-synopsis.md")?;
     writeln!(output, "# Input dir: {}", repo_dir)?;
 
-    // Git info
     let _ = input_repo_stats(&repo, &mut output);
     let _ = input_files(repo_dir, &mut output);
     Ok(())
