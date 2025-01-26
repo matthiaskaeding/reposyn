@@ -5,10 +5,10 @@ use clap::{Arg, Command};
 fn main() {
     let matches = Command::new("reposyn")
         .version("0.1.0")
-        .author("Your Name <your.email@example.com>")
+        .author("Matthias Kaeding <kaedingmatthias@gmail.com>")
         .about("Creates AI-friendly text summary of a repo")
         .arg(
-            Arg::new("input_dir")
+            Arg::new("input_folder")
                 .short('f')
                 .long("folder")
                 .value_name("DIR")
@@ -16,7 +16,7 @@ fn main() {
         )
         .get_matches();
 
-    let input_dir = matches.get_one::<String>("input_dir").unwrap();
+    let input_dir = matches.get_one::<String>("input_folder").unwrap();
 
     match file_conc::concatenate_files(input_dir) {
         Ok(()) => println!("Files successfully concatenated!"),

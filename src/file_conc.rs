@@ -50,7 +50,7 @@ fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn 
 
     writeln!(output, "# Last three commit messages")?;
     for (i, msg) in recent_messages.iter().enumerate() {
-        writeln!(output, "## Commit msg({})\n{}\n", i.to_string(), msg)?;
+        writeln!(output, "### Commit msg({})\n{}", i.to_string(), msg)?;
     }
 
     Ok(())
@@ -60,7 +60,7 @@ fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn 
 
 
 fn input_files(repo_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> {
-    writeln!(output, "\n# Files")?;
+    writeln!(output, "# Files")?;
 
     for entry in Walk::new(repo_dir) {
         let path = match entry {
