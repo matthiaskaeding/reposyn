@@ -90,13 +90,13 @@ fn input_files(repo_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
-pub fn concatenate_files(repo_dir: &str, output_file: &str) -> Result<(), Box<dyn Error>> {
+pub fn concatenate_files(repo_dir: &str) -> Result<(), Box<dyn Error>> {
     let repo = match Repository::open(repo_dir) {
         Ok(repo) => repo,
         Err(e) => panic!("failed to open: {}", e),
     };
 
-    let mut output = File::create(output_file)?;
+    let mut output = File::create("repo-synopsis.md")?;
     writeln!(output, "# Input dir: {}", repo_dir)?;
 
     let _ = input_repo_stats(&repo, &mut output);

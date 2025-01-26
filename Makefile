@@ -1,10 +1,10 @@
 get-requests:
 	git clone https://github.com/psf/requests.git
 
-build:
-	cargo build
+build-release:
+	cargo build --release
 run:
 	cargo run --quiet
-brun: build run
+run: build run
 
-.PHONY: build run brun get-requests
+.PHONY: build run run get-requests
