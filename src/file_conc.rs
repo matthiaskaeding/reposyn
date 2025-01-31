@@ -1,14 +1,27 @@
 use git2::Repository;
+use ignore::Walk;
 use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Write};
 use time::OffsetDateTime;
-use ignore::Walk;
 
 const TEXT_EXTENSIONS: &[&str] = &[
-    "txt", "md", "rs", "py", "js", "json", "yaml", "yml", "toml",
-    "css", "html", "htm", "xml", "csv", "sh", "bash", "conf",
+    "txt", "md", "rs", "py", "js", "json", "yaml", "yml", "toml", "css", "html", "htm", "xml",
+    "csv", "sh", "bash", "conf",
 ];
+
+fn input_context(input_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> {
+    writeln!(
+        output,
+        "<context>
+You are an expert programming Al assistant who receives a summary of repo {} in XML format.
+Understand the contents of the repo.
+</context>\n\n",
+        input_dir
+    )?;
+
+    Ok(())
+}
 
 fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn Error>> {
     let mut revwalk = repo.revwalk()?;
@@ -36,32 +49,47 @@ fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn 
         count += 1;
     }
 
-    writeln!(output, "# Repo stats")?;
-
-    // Convert timestamps to readable dates
+    writeln!(output, "<Repo stats>")?;
     if let (Some(first), Some(latest)) = (first_time, latest_time) {
         let first_date = OffsetDateTime::from_unix_timestamp(first)?;
         let latest_date = OffsetDateTime::from_unix_timestamp(latest)?;
-
-        writeln!(output, "Total commits: {}", count.to_string())?;
-        writeln!(output, "First commit: {}", first_date.to_string())?;
-        writeln!(output, "Latest commits: {}\n", latest_date.to_string())?;
+        writeln!(
+            output,
+            "<Total commits>{}</Total commits>",
+            count.to_string()
+        )?;
+        writeln!(
+            output,
+            "<First commit>{}</First commit>",
+            first_date.to_string()
+        )?;
+        writeln!(
+            output,
+            "<Latest commits>{}</Latest commits>",
+            latest_date.to_string()
+        )?;
     }
-
-    writeln!(output, "# Last three commit messages")?;
+    writeln!(output, "</Repo stats>")?;
+    writeln!(output, "<Last three commit messages>")?;
     for (i, msg) in recent_messages.iter().enumerate() {
-        writeln!(output, "### Commit msg({})\n{}", i.to_string(), msg)?;
+        let msg_clean: String = msg
+            .lines()
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<&str>>()
+            .join("\n");
+        writeln!(
+            output,
+            "<Commit_message_{}>{}</Commit_message_{}>",
+            i.to_string(),
+            msg_clean,
+            i.to_string(),
+        )?;
     }
-
+    writeln!(output, "</Last three commit messages>\n\n")?;
     Ok(())
 }
 
-
-
-
 fn input_files(repo_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> {
-    writeln!(output, "# Files")?;
-
     for entry in Walk::new(repo_dir) {
         let path = match entry {
             Ok(entry) => entry.path().to_path_buf(),
@@ -78,11 +106,14 @@ fn input_files(repo_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> 
                     let mut content = String::new();
                     let mut file = File::open(&path)?;
                     file.read_to_string(&mut content)?;
-
-                    writeln!(output, "\n## File: {}", path.display())?;
-                    write!(output, "{}\n", content)?;
-                    writeln!(output)?;
-                } 
+                    writeln!(
+                        output,
+                        "<File:{}>\n{}</File:{}>\n",
+                        path.display().to_string(),
+                        content,
+                        path.display().to_string()
+                    )?;
+                }
             }
         }
     }
@@ -96,10 +127,9 @@ pub fn concatenate_files(repo_dir: &str) -> Result<(), Box<dyn Error>> {
         Err(e) => panic!("failed to open: {}", e),
     };
 
-    let mut output = File::create("repo-synopsis.md")?;
-    writeln!(output, "# Input dir: {}", repo_dir)?;
-
-    let _ = input_repo_stats(&repo, &mut output);
-    let _ = input_files(repo_dir, &mut output);
+    let mut output = File::create("repo-synopsis.txt")?;
+    input_context(&repo_dir, &mut output)?;
+    input_repo_stats(&repo, &mut output)?;
+    input_files(repo_dir, &mut output)?;
     Ok(())
 }
