@@ -3,21 +3,33 @@ use ignore::Walk;
 use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::path::Path;
 use time::OffsetDateTime;
-
 const TEXT_EXTENSIONS: &[&str] = &[
     "txt", "md", "rs", "py", "js", "json", "yaml", "yml", "toml", "css", "html", "htm", "xml",
     "csv", "sh", "bash", "conf",
 ];
 
 fn input_context(input_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> {
+    let repo_name = if input_dir == "./" {
+        let path = Path::new(".")
+            .canonicalize()?
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(input_dir)
+            .to_string(); // Convert to owned String
+        path
+    } else {
+        input_dir.to_string() // Convert to owned String
+    };
+
     writeln!(
         output,
         "<context>
 You are an expert programming Al assistant who receives a summary of repo {} in XML format.
 Understand the contents of the repo.
 </context>\n\n",
-        input_dir
+        repo_name
     )?;
 
     Ok(())
