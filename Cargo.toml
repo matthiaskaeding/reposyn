@@ -9,5 +9,6 @@ ignore = "0.4.10"
 clap = { version = "4.0", features = ["derive"] }
 copypasta = "0.10"
 glob-match = "0.2.1"
+regex = "1.11.1"
 [dev-dependencies]
 tempfile = "3.8.0"
