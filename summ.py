@@ -1,16 +1,18 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "langdetect",
-#     "spacy",
-#     "sumy",
+#     "textstat",
 # ]
 # ///
 
 # %%
-from smart_open import smart_open
 import textstat
-import json
+from pathlib import Path
+from collections import Counter
+import re
+from datetime import datetime
+import mimetypes
+import os
 
 
 file = Path("requests/HISTORY.md")
@@ -18,18 +20,6 @@ assert file.exists()
 text = file.read_text()
 
 
-from smart_open import smart_open
-import textstat
-import json
-from smart_open import smart_open
-import textstat
-import json
-from collections import Counter
-import re
-from datetime import datetime
-import hashlib
-import mimetypes
-import os
 
 
 # %%
@@ -40,7 +30,6 @@ def summarize_file(filepath):
 
     # Calculate file hash (first 1MB for large files)
     with open(filepath, "rb") as f:
-        content = f.read(1024 * 1024)  # Read first MB
 
         # Process as text
         f.seek(0)
