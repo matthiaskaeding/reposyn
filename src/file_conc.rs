@@ -1,6 +1,7 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 use git2::Repository;
-use ignore::Walk;
+use glob_match::glob_match;
+use ignore::WalkBuilder;
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs::File;
@@ -132,7 +133,12 @@ fn input_files(
 ) -> Result<(), Box<dyn Error>> {
     let mut sizes = BTreeSet::new();
 
-    for entry in Walk::new(repo_dir) {
+    let walker = WalkBuilder::new(repo_dir)
+        .hidden(true) // Skip hidden files
+        .git_ignore(true) // Respect .gitignore
+        .build();
+
+    for entry in walker {
         let path = match entry {
             Ok(entry) => entry.path().to_path_buf(),
             Err(err) => {
@@ -143,27 +149,27 @@ fn input_files(
 
         if ignore_patterns
             .iter()
-            .any(|pattern| path.to_string_lossy().contains(pattern))
+            .any(|pattern| glob_match(pattern, &path.to_string_lossy()))
         {
             continue;
         }
 
         if path.is_file() {
-            let metadata = path.metadata()?;
-
-            let size_pair = (metadata.len(), path.display().to_string());
-            if sizes.len() < 6 {
-                sizes.insert(size_pair);
-            } else if let Some(smallest) = sizes.first().cloned() {
-                if size_pair > smallest {
-                    sizes.remove(&smallest); // Remove the smallest element
-                    sizes.insert(size_pair);
-                }
-            }
-
             if let Some(extension) = path.extension() {
                 let ext = extension.to_string_lossy().to_lowercase();
                 if TEXT_EXTENSIONS.contains(&ext.as_str()) {
+                    // Store size
+                    let metadata = path.metadata()?;
+                    let size_pair = (metadata.len(), path.display().to_string());
+                    if sizes.len() < 6 {
+                        sizes.insert(size_pair);
+                    } else if let Some(smallest) = sizes.first().cloned() {
+                        if size_pair > smallest {
+                            sizes.remove(&smallest); // Remove the smallest element
+                            sizes.insert(size_pair);
+                        }
+                    }
+                    // Copy contents into output
                     let mut content = String::new();
                     let mut file = File::open(&path)?;
                     file.read_to_string(&mut content)?;

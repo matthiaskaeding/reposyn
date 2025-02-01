@@ -8,3 +8,4 @@ time = "0.3"
 ignore = "0.4.10"
 clap = { version = "4.0", features = ["derive"] }
 copypasta = "0.10"
+glob-match = "0.2.1"
