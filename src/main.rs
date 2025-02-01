@@ -21,6 +21,14 @@ fn main() {
                 .help("Comma-separated paths to ignore (e.g., 'target,node_modules')")
                 .default_value("target,node_modules,.git"),
         )
+        .arg(
+            Arg::new("target")
+                .short('t')
+                .long("target_output")
+                .value_name("TARGET")
+                .help("Target file")
+                .default_value("repo-synopsis.txt"),
+        )
         .get_matches();
 
     let input_dir = matches.get_one::<String>("input_folder").unwrap();
@@ -29,8 +37,9 @@ fn main() {
         .unwrap()
         .split(",")
         .collect::<Vec<&str>>();
+    let target = matches.get_one::<String>("target").unwrap();
 
-    match file_conc::concatenate_files(input_dir, ignore_patterns) {
+    match file_conc::concatenate_files(input_dir, ignore_patterns, target) {
         Ok(()) => println!("Files successfully concatenated!"),
         Err(e) => eprintln!("Error: {}", e),
     }

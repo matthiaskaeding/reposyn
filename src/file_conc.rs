@@ -186,13 +186,14 @@ fn input_files(
 pub fn concatenate_files(
     repo_dir: &str,
     exclude_patterns: Vec<&str>,
+    target: &String,
 ) -> Result<(), Box<dyn Error>> {
     let repo = match Repository::open(repo_dir) {
         Ok(repo) => repo,
         Err(e) => panic!("failed to open: {}", e),
     };
 
-    let mut output = File::create("repo-synopsis.txt")?;
+    let mut output = File::create(target)?;
     input_context(&repo_dir, &mut output)?;
     input_repo_stats(&repo, &mut output)?;
     input_files(repo_dir, &mut output, exclude_patterns)?;
