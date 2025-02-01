@@ -353,3 +353,5 @@ repo-synopsis.txt
 repo-synopsis.md
 .vscode/
 cspell.config.yaml
+
+.DS_Store
