@@ -181,6 +181,11 @@ fn input_files(
                     if size_pair > smallest {
                         sizes.remove(&smallest); // Remove the smallest element
                         sizes.insert(size_pair);
+                    } else if let Some(smallest) = sizes.first().cloned() {
+                        if size_pair > smallest {
+                            sizes.remove(&smallest);
+                            sizes.insert(size_pair);
+                        }
                     }
                 }
             }
