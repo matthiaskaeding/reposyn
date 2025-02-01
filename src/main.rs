@@ -29,6 +29,13 @@ fn main() {
                 .help("Target file")
                 .default_value("repo-synopsis.txt"),
         )
+        .arg(
+            Arg::new("clipboard")
+                .short('c')
+                .long("clipboard")
+                .help("Copy to clipboard, will ignore <target> argument if set")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     let input_dir = matches.get_one::<String>("input_folder").unwrap();
@@ -38,9 +45,10 @@ fn main() {
         .split(",")
         .collect::<Vec<&str>>();
     let target = matches.get_one::<String>("target").unwrap();
+    let use_clipboard = matches.get_flag("clipboard");
 
-    match file_conc::concatenate_files(input_dir, ignore_patterns, target) {
-        Ok(()) => println!("Files successfully concatenated!"),
+    match file_conc::concatenate_files(input_dir, ignore_patterns, target, use_clipboard) {
+        Ok(()) => (),
         Err(e) => eprintln!("Error: {}", e),
     }
 }

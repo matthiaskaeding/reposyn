@@ -1,8 +1,10 @@
+use copypasta::{ClipboardContext, ClipboardProvider};
 use git2::Repository;
 use ignore::Walk;
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs::File;
+use std::io::Cursor;
 use std::io::{Read, Write};
 use std::path::Path;
 use time::OffsetDateTime;
@@ -12,7 +14,7 @@ const TEXT_EXTENSIONS: &[&str] = &[
     "csv", "sh", "bash", "conf",
 ];
 
-fn input_context(input_dir: &str, output: &mut File) -> Result<(), Box<dyn Error>> {
+fn input_context(input_dir: &str, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     let repo_name = if input_dir == "./" {
         let path = Path::new(".")
             .canonicalize()?
@@ -37,7 +39,7 @@ Understand the contents of the repo.
     Ok(())
 }
 
-fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn Error>> {
+fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     let mut revwalk = repo.revwalk()?;
     revwalk.push_head()?;
 
@@ -103,6 +105,7 @@ fn input_repo_stats(repo: &Repository, output: &mut File) -> Result<(), Box<dyn 
     writeln!(output, "</Last three commit messages>\n\n")?;
     Ok(())
 }
+
 fn format_size(size: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
@@ -124,7 +127,7 @@ fn format_size(size: u64) -> String {
 
 fn input_files(
     repo_dir: &str,
-    output: &mut File,
+    output: &mut impl Write,
     ignore_patterns: Vec<&str>,
 ) -> Result<(), Box<dyn Error>> {
     let mut sizes = BTreeSet::new();
@@ -183,19 +186,43 @@ fn input_files(
     Ok(())
 }
 
+fn write_repo_content(
+    repo_dir: &str,
+    repo: &Repository,
+    exclude_patterns: Vec<&str>,
+    output: &mut impl Write,
+) -> Result<(), Box<dyn Error>> {
+    input_context(&repo_dir, output)?;
+    input_repo_stats(repo, output)?;
+    input_files(repo_dir, output, exclude_patterns)?;
+    Ok(())
+}
+
 pub fn concatenate_files(
     repo_dir: &str,
     exclude_patterns: Vec<&str>,
     target: &String,
+    use_clipboard: bool,
 ) -> Result<(), Box<dyn Error>> {
     let repo = match Repository::open(repo_dir) {
         Ok(repo) => repo,
         Err(e) => panic!("failed to open: {}", e),
     };
 
-    let mut output = File::create(target)?;
-    input_context(&repo_dir, &mut output)?;
-    input_repo_stats(&repo, &mut output)?;
-    input_files(repo_dir, &mut output, exclude_patterns)?;
+    if use_clipboard {
+        let mut buffer = Vec::new();
+        let mut cursor = Cursor::new(&mut buffer);
+        write_repo_content(repo_dir, &repo, exclude_patterns, &mut cursor)?;
+
+        let content = String::from_utf8(buffer)?;
+        let mut ctx = ClipboardContext::new().unwrap();
+        ctx.set_contents(content.to_owned()).unwrap();
+        println!("Repo contents copied to clipboard!");
+    } else {
+        let mut file = File::create(target)?;
+        write_repo_content(repo_dir, &repo, exclude_patterns, &mut file)?;
+        println!("Repo contents written to file: {}", target);
+    }
+
     Ok(())
 }
