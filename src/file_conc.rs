@@ -143,6 +143,7 @@ fn input_files(
         .overrides(overrides)
         .git_ignore(true)
         .build();
+    let mut paths = Vec::new();
 
     for entry in walker {
         let path = match entry {
@@ -161,6 +162,7 @@ fn input_files(
                 }
 
                 let path_string = path.display().to_string();
+                paths.push(path_string.clone());
                 // Write contents into output
                 let mut content = String::new();
                 let mut file = File::open(&path)?;
@@ -185,10 +187,18 @@ fn input_files(
         }
     }
 
+    // Input paths
+    writeln!(output, "<All paths>")?;
+    for p in paths.iter() {
+        writeln!(output, "{}", p)?;
+    }
+    writeln!(output, "</All paths>")?;
+
     println!("Five biggest files: path (size)");
     for item in sizes.iter().rev() {
         println!("{} ({})", item.1, format_size(item.0));
     }
+
     Ok(())
 }
 
