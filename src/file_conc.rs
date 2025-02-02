@@ -1,6 +1,6 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 use git2::Repository;
-use ignore::{gitignore::GitignoreBuilder, WalkBuilder};
+use ignore::{overrides::OverrideBuilder, WalkBuilder};
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs::File;
@@ -132,15 +132,16 @@ fn input_files(
 ) -> Result<(), Box<dyn Error>> {
     let mut sizes = BTreeSet::new();
 
-    let mut gitignore_builder = GitignoreBuilder::new(repo_dir);
+    let mut override_builder = OverrideBuilder::new(repo_dir);
     for pattern in &ignore_patterns {
-        gitignore_builder.add_line(None, pattern)?;
+        override_builder.add(&format!("!{}", pattern))?;
     }
-    let gitignore = gitignore_builder.build()?;
+    let overrides = override_builder.build()?;
 
     let walker = WalkBuilder::new(repo_dir)
         .hidden(true)
-        .git_ignore(false)
+        .overrides(overrides)
+        .git_ignore(true)
         .build();
 
     for entry in walker {
@@ -151,14 +152,11 @@ fn input_files(
                 continue;
             }
         };
-        if gitignore.matched(&path, path.is_dir()).is_ignore() {
-            continue;
-        }
 
         if path.is_file() {
             if let Some(extension) = path.extension() {
-                let ext = extension.to_string_lossy().to_lowercase();
-                if !TEXT_EXTENSIONS.contains(&ext.as_str()) {
+                let extension = extension.to_string_lossy().to_lowercase();
+                if !TEXT_EXTENSIONS.contains(&extension.as_str()) {
                     continue;
                 }
 
