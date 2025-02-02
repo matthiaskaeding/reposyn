@@ -1,7 +1,6 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 use git2::Repository;
-use glob_match::glob_match;
-use ignore::WalkBuilder;
+use ignore::{gitignore::GitignoreBuilder, WalkBuilder};
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs::File;
@@ -133,9 +132,15 @@ fn input_files(
 ) -> Result<(), Box<dyn Error>> {
     let mut sizes = BTreeSet::new();
 
+    let mut gitignore_builder = GitignoreBuilder::new(repo_dir);
+    for pattern in &ignore_patterns {
+        gitignore_builder.add_line(None, pattern)?;
+    }
+    let gitignore = gitignore_builder.build()?;
+
     let walker = WalkBuilder::new(repo_dir)
-        .hidden(true) // Skip hidden files
-        .git_ignore(true) // Respect .gitignore
+        .hidden(true)
+        .git_ignore(false)
         .build();
 
     for entry in walker {
@@ -146,40 +151,37 @@ fn input_files(
                 continue;
             }
         };
-
-        if ignore_patterns
-            .iter()
-            .any(|pattern| glob_match(pattern, &path.to_string_lossy()))
-        {
+        if gitignore.matched(&path, path.is_dir()).is_ignore() {
             continue;
         }
 
         if path.is_file() {
             if let Some(extension) = path.extension() {
                 let ext = extension.to_string_lossy().to_lowercase();
-                if TEXT_EXTENSIONS.contains(&ext.as_str()) {
-                    // Store size
-                    let metadata = path.metadata()?;
-                    let size_pair = (metadata.len(), path.display().to_string());
-                    if sizes.len() < 6 {
+                if !TEXT_EXTENSIONS.contains(&ext.as_str()) {
+                    continue;
+                }
+
+                let path_string = path.display().to_string();
+                // Write contents into output
+                let mut content = String::new();
+                let mut file = File::open(&path)?;
+                file.read_to_string(&mut content)?;
+                writeln!(
+                    output,
+                    "<File:{}>\n{}</File:{}>\n",
+                    path_string, content, path_string
+                )?;
+                // Store size
+                let metadata = path.metadata()?;
+                let size_pair = (metadata.len(), path_string);
+                if sizes.len() < 6 {
+                    sizes.insert(size_pair);
+                } else if let Some(smallest) = sizes.first().cloned() {
+                    if size_pair > smallest {
+                        sizes.remove(&smallest); // Remove the smallest element
                         sizes.insert(size_pair);
-                    } else if let Some(smallest) = sizes.first().cloned() {
-                        if size_pair > smallest {
-                            sizes.remove(&smallest); // Remove the smallest element
-                            sizes.insert(size_pair);
-                        }
                     }
-                    // Copy contents into output
-                    let mut content = String::new();
-                    let mut file = File::open(&path)?;
-                    file.read_to_string(&mut content)?;
-                    writeln!(
-                        output,
-                        "<File:{}>\n{}</File:{}>\n",
-                        path.display().to_string(),
-                        content,
-                        path.display().to_string()
-                    )?;
                 }
             }
         }
