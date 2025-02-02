@@ -11,6 +11,7 @@ fn main() {
                 .short('f')
                 .long("folder")
                 .value_name("DIR")
+                .help("Folder to summarize")
                 .default_value("./"),
         )
         .arg(
@@ -22,18 +23,18 @@ fn main() {
                 .default_value("target,node_modules,.git"),
         )
         .arg(
-            Arg::new("target")
-                .short('t')
-                .long("target_output")
-                .value_name("TARGET")
-                .help("Target file")
+            Arg::new("output_file")
+                .short('o')
+                .long("output_file")
+                .value_name("output_file")
+                .help("Output text file")
                 .default_value("repo-synopsis.txt"),
         )
         .arg(
             Arg::new("clipboard")
                 .short('c')
                 .long("clipboard")
-                .help("Copy to clipboard, will ignore <target> argument if set")
+                .help("Copy to clipboard, will ignore <output_file> if set")
                 .action(clap::ArgAction::SetTrue),
         )
         .get_matches();
@@ -44,7 +45,7 @@ fn main() {
         .unwrap()
         .split(",")
         .collect::<Vec<&str>>();
-    let target = matches.get_one::<String>("target").unwrap();
+    let target = matches.get_one::<String>("output_file").unwrap();
     let use_clipboard = matches.get_flag("clipboard");
 
     match file_conc::concatenate_files(input_dir, ignore_patterns, target, use_clipboard) {
