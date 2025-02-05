@@ -11,13 +11,15 @@ env:
 
 jobs:
   test:
-    name: Test
+    name: Test and Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
       - name: Cache dependencies
         uses: actions/cache@v3
@@ -30,6 +32,12 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy check
+        run: cargo clippy -- -D warnings
 
       - name: Build
         run: cargo build --verbose
