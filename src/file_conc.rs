@@ -201,7 +201,16 @@ fn input_files(
 
     Ok(())
 }
-
+/// Coordinates the writing of all repository content
+///
+/// # Arguments
+/// * `repo_dir` - The repository directory path
+/// * `repo` - Reference to the Git repository
+/// * `exclude_patterns` - Patterns of files/directories to exclude
+/// * `output` - The writer for the output
+///
+/// # Returns
+/// * `Result<(), Box<dyn Error>>` - Success or error during writing
 fn write_repo_content(
     repo_dir: &str,
     repo: &Repository,
@@ -213,7 +222,20 @@ fn write_repo_content(
     input_files(repo_dir, output, exclude_patterns)?;
     Ok(())
 }
-
+/// Main entry point for file concatenation functionality
+///
+/// # Arguments
+/// * `repo_dir` - The repository directory path
+/// * `ignore` - Comma-separated string of patterns to ignore
+/// * `target` - Output file path
+/// * `use_clipboard` - Whether to copy output to clipboard instead of file
+///
+/// # Returns
+/// * `Result<(), Box<dyn Error>>` - Success or error during execution
+///
+/// # Details
+/// Either writes the repository summary to a file or copies it to the system clipboard,
+/// depending on the use_clipboard parameter
 pub fn concatenate_files(
     repo_dir: &str,
     ignore: &String,
