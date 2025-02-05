@@ -69,21 +69,9 @@ fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<(), Bo
     if let (Some(first), Some(latest)) = (first_time, latest_time) {
         let first_date = OffsetDateTime::from_unix_timestamp(first)?;
         let latest_date = OffsetDateTime::from_unix_timestamp(latest)?;
-        writeln!(
-            output,
-            "<Total commits>{}</Total commits>",
-            count.to_string()
-        )?;
-        writeln!(
-            output,
-            "<First commit>{}</First commit>",
-            first_date.to_string()
-        )?;
-        writeln!(
-            output,
-            "<Latest commits>{}</Latest commits>",
-            latest_date.to_string()
-        )?;
+        writeln!(output, "<Total commits>{}</Total commits>", count)?;
+        writeln!(output, "<First commit>{}</First commit>", first_date)?;
+        writeln!(output, "<Latest commits>{}</Latest commits>", latest_date)?;
     }
     writeln!(output, "</Repo statistics>")?;
 
@@ -97,9 +85,7 @@ fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<(), Bo
         writeln!(
             output,
             "<Commit_message_{}>{}</Commit_message_{}>",
-            i.to_string(),
-            msg_clean,
-            i.to_string(),
+            i, msg_clean, i,
         )?;
     }
     writeln!(output, "</Last three commit messages>\n\n")?;
@@ -217,7 +203,7 @@ fn write_repo_content(
     exclude_patterns: Vec<&str>,
     output: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
-    input_context(&repo_dir, output)?;
+    input_context(repo_dir, output)?;
     input_repo_stats(repo, output)?;
     input_files(repo_dir, output, exclude_patterns)?;
     Ok(())
@@ -238,7 +224,7 @@ fn write_repo_content(
 /// depending on the use_clipboard parameter
 pub fn concatenate_files(
     repo_dir: &str,
-    ignore: &String,
+    ignore: &str,
     target: &String,
     use_clipboard: bool,
 ) -> Result<(), Box<dyn Error>> {
