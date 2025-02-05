@@ -69,21 +69,9 @@ fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<(), Bo
     if let (Some(first), Some(latest)) = (first_time, latest_time) {
         let first_date = OffsetDateTime::from_unix_timestamp(first)?;
         let latest_date = OffsetDateTime::from_unix_timestamp(latest)?;
-        writeln!(
-            output,
-            "<Total commits>{}</Total commits>",
-            count.to_string()
-        )?;
-        writeln!(
-            output,
-            "<First commit>{}</First commit>",
-            first_date.to_string()
-        )?;
-        writeln!(
-            output,
-            "<Latest commits>{}</Latest commits>",
-            latest_date.to_string()
-        )?;
+        writeln!(output, "<Total commits>{}</Total commits>", count)?;
+        writeln!(output, "<First commit>{}</First commit>", first_date)?;
+        writeln!(output, "<Latest commits>{}</Latest commits>", latest_date)?;
     }
     writeln!(output, "</Repo statistics>")?;
 
@@ -97,9 +85,7 @@ fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<(), Bo
         writeln!(
             output,
             "<Commit_message_{}>{}</Commit_message_{}>",
-            i.to_string(),
-            msg_clean,
-            i.to_string(),
+            i, msg_clean, i,
         )?;
     }
     writeln!(output, "</Last three commit messages>\n\n")?;
@@ -217,7 +203,7 @@ fn write_repo_content(
     exclude_patterns: Vec<&str>,
     output: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
-    input_context(&repo_dir, output)?;
+    input_context(repo_dir, output)?;
     input_repo_stats(repo, output)?;
     input_files(repo_dir, output, exclude_patterns)?;
     Ok(())
@@ -238,7 +224,7 @@ fn write_repo_content(
 /// depending on the use_clipboard parameter
 pub fn concatenate_files(
     repo_dir: &str,
-    ignore: &String,
+    ignore: &str,
     target: &String,
     use_clipboard: bool,
 ) -> Result<(), Box<dyn Error>> {
@@ -267,4 +253,163 @@ pub fn concatenate_files(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use git2::Repository;
+    use std::error::Error;
+    use std::fs::{self, File};
+    use std::io::Write;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    fn setup_test_repo() -> Result<(TempDir, Repository), Box<dyn Error>> {
+        let temp_dir = TempDir::new()?;
+        let repo = Repository::init(temp_dir.path())?;
+
+        {
+            // Create a test file
+            let test_file_path = temp_dir.path().join("test.txt");
+            let mut file = File::create(&test_file_path)?;
+            writeln!(file, "Test content")?;
+
+            let mut config = repo.config()?;
+            config.set_str("user.name", "Test User")?;
+            config.set_str("user.email", "test@example.com")?;
+
+            let mut index = repo.index()?;
+            index.add_path(Path::new("test.txt"))?;
+            index.write()?;
+
+            {
+                let tree_id = index.write_tree()?;
+                let tree = repo.find_tree(tree_id)?;
+                let signature = git2::Signature::now("Test User", "test@example.com")?;
+
+                repo.commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    "Initial commit",
+                    &tree,
+                    &[],
+                )?;
+            }
+        }
+
+        Ok((temp_dir, repo)) // repo is no longer borrowed when we return it
+    }
+
+    #[test]
+    fn test_input_context() -> Result<(), Box<dyn Error>> {
+        let mut output = Vec::new();
+        input_context("./test-repo", &mut output)?;
+
+        let output_str = String::from_utf8(output)?;
+        assert!(output_str.contains("summary of repo ./test-repo"));
+        assert!(output_str.contains("<context>"));
+        assert!(output_str.contains("</context>"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_input_repo_stats() -> Result<(), Box<dyn Error>> {
+        let (_temp_dir, repo) = setup_test_repo()?;
+        let mut output = Vec::new();
+
+        input_repo_stats(&repo, &mut output)?;
+
+        let output_str = String::from_utf8(output)?;
+        assert!(output_str.contains("<Repo statistics>"));
+        assert!(output_str.contains("<Total commits>1</Total commits>"));
+        assert!(output_str.contains("<First commit>"));
+        assert!(output_str.contains("<Latest commits>"));
+        assert!(output_str.contains("Initial commit"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_size() {
+        assert_eq!(format_size(500), "500 B");
+        assert_eq!(format_size(1024), "1.00 KB");
+        assert_eq!(format_size(1024 * 1024), "1.00 MB");
+        assert_eq!(format_size(1024 * 1024 * 1024), "1.00 GB");
+    }
+
+    #[test]
+    fn test_input_files() -> Result<(), Box<dyn Error>> {
+        let temp_dir = TempDir::new()?;
+
+        // Create test files
+        let test_file_path = temp_dir.path().join("test.txt");
+        fs::write(&test_file_path, "Test content")?;
+
+        let test_md_path = temp_dir.path().join("readme.md");
+        fs::write(&test_md_path, "# Test Markdown")?;
+
+        // Create ignored file
+        let ignored_file_path = temp_dir.path().join("ignored.bin");
+        fs::write(&ignored_file_path, b"binary content")?;
+
+        let mut output = Vec::new();
+        let ignore_patterns = vec!["*.bin"];
+
+        input_files(
+            temp_dir.path().to_str().unwrap(),
+            &mut output,
+            ignore_patterns,
+        )?;
+
+        let output_str = String::from_utf8(output)?;
+        assert!(output_str.contains("<File:"));
+        assert!(output_str.contains("Test content"));
+        assert!(output_str.contains("# Test Markdown"));
+        assert!(!output_str.contains("binary content"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_write_repo_content() -> Result<(), Box<dyn Error>> {
+        let (temp_dir, repo) = setup_test_repo()?;
+        let mut output = Vec::new();
+        let ignore_patterns = vec![];
+
+        write_repo_content(
+            temp_dir.path().to_str().unwrap(),
+            &repo,
+            ignore_patterns,
+            &mut output,
+        )?;
+
+        let output_str = String::from_utf8(output)?;
+        assert!(output_str.contains("<context>"));
+        assert!(output_str.contains("<Repo statistics>"));
+        assert!(output_str.contains("<File:"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_concatenate_files() -> Result<(), Box<dyn Error>> {
+        let (temp_dir, _) = setup_test_repo()?;
+        let target_file = temp_dir.path().join("output.txt");
+
+        concatenate_files(
+            temp_dir.path().to_str().unwrap(),
+            &String::from("*.bin"),
+            &target_file.to_str().unwrap().to_string(),
+            false,
+        )?;
+
+        assert!(target_file.exists());
+        let content = fs::read_to_string(&target_file)?;
+        assert!(content.contains("<context>"));
+        assert!(content.contains("<Repo statistics>"));
+
+        Ok(())
+    }
 }
