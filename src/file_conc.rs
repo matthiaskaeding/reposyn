@@ -221,10 +221,16 @@ fn write_repo_content(
 
 pub fn concatenate_files(
     repo_dir: &str,
-    exclude_patterns: Vec<&str>,
-    target: &String,
+    ignore: &str,
+    target: &str,
     use_clipboard: bool,
 ) -> Result<(), Box<dyn Error>> {
+    let ignore_v: Vec<&str> = if ignore.is_empty() {
+        Vec::new()
+    } else {
+        ignore.split(",").collect::<Vec<&str>>()
+    };
+
     let repo = match Repository::open(repo_dir) {
         Ok(repo) => repo,
         Err(e) => panic!("failed to open: {}", e),
@@ -233,7 +239,7 @@ pub fn concatenate_files(
     if use_clipboard {
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
-        write_repo_content(repo_dir, &repo, exclude_patterns, &mut cursor)?;
+        write_repo_content(repo_dir, &repo, ignore_v, &mut cursor)?;
 
         let content = String::from_utf8(buffer)?;
         let mut ctx = ClipboardContext::new().unwrap();
@@ -241,7 +247,7 @@ pub fn concatenate_files(
         println!("Repo contents copied to clipboard!");
     } else {
         let mut file = File::create(target)?;
-        write_repo_content(repo_dir, &repo, exclude_patterns, &mut file)?;
+        write_repo_content(repo_dir, &repo, ignore_v, &mut file)?;
         println!("Repo contents written to file: {}", target);
     }
 
