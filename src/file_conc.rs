@@ -143,6 +143,7 @@ fn input_files(
         .overrides(overrides)
         .git_ignore(true)
         .build();
+    let mut paths = Vec::new();
 
     for entry in walker {
         let path = match entry {
@@ -161,6 +162,7 @@ fn input_files(
                 }
 
                 let path_string = path.display().to_string();
+                paths.push(path_string.clone());
                 // Write contents into output
                 let mut content = String::new();
                 let mut file = File::open(&path)?;
@@ -185,13 +187,30 @@ fn input_files(
         }
     }
 
+    // Input paths
+    writeln!(output, "<All paths>")?;
+    for p in paths.iter() {
+        writeln!(output, "{}", p)?;
+    }
+    writeln!(output, "</All paths>")?;
+
     println!("Five biggest files: path (size)");
     for item in sizes.iter().rev() {
         println!("{} ({})", item.1, format_size(item.0));
     }
+
     Ok(())
 }
-
+/// Coordinates the writing of all repository content
+///
+/// # Arguments
+/// * `repo_dir` - The repository directory path
+/// * `repo` - Reference to the Git repository
+/// * `exclude_patterns` - Patterns of files/directories to exclude
+/// * `output` - The writer for the output
+///
+/// # Returns
+/// * `Result<(), Box<dyn Error>>` - Success or error during writing
 fn write_repo_content(
     repo_dir: &str,
     repo: &Repository,
@@ -203,10 +222,23 @@ fn write_repo_content(
     input_files(repo_dir, output, exclude_patterns)?;
     Ok(())
 }
-
+/// Main entry point for file concatenation functionality
+///
+/// # Arguments
+/// * `repo_dir` - The repository directory path
+/// * `ignore` - Comma-separated string of patterns to ignore
+/// * `target` - Output file path
+/// * `use_clipboard` - Whether to copy output to clipboard instead of file
+///
+/// # Returns
+/// * `Result<(), Box<dyn Error>>` - Success or error during execution
+///
+/// # Details
+/// Either writes the repository summary to a file or copies it to the system clipboard,
+/// depending on the use_clipboard parameter
 pub fn concatenate_files(
     repo_dir: &str,
-    exclude_patterns: Vec<&str>,
+    ignore: &String,
     target: &String,
     use_clipboard: bool,
 ) -> Result<(), Box<dyn Error>> {
@@ -214,11 +246,15 @@ pub fn concatenate_files(
         Ok(repo) => repo,
         Err(e) => panic!("failed to open: {}", e),
     };
-
+    let ignore_v: Vec<&str> = if ignore.is_empty() {
+        Vec::new()
+    } else {
+        ignore.split(",").collect::<Vec<&str>>()
+    };
     if use_clipboard {
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
-        write_repo_content(repo_dir, &repo, exclude_patterns, &mut cursor)?;
+        write_repo_content(repo_dir, &repo, ignore_v, &mut cursor)?;
 
         let content = String::from_utf8(buffer)?;
         let mut ctx = ClipboardContext::new().unwrap();
@@ -226,7 +262,7 @@ pub fn concatenate_files(
         println!("Repo contents copied to clipboard!");
     } else {
         let mut file = File::create(target)?;
-        write_repo_content(repo_dir, &repo, exclude_patterns, &mut file)?;
+        write_repo_content(repo_dir, &repo, ignore_v, &mut file)?;
         println!("Repo contents written to file: {}", target);
     }
 

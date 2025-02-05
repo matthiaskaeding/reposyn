@@ -40,15 +40,11 @@ fn main() {
         .get_matches();
 
     let input_dir = matches.get_one::<String>("input_folder").unwrap();
-    let ignore_patterns: Vec<&str> = matches
-        .get_one::<String>("ignore")
-        .unwrap()
-        .split(",")
-        .collect::<Vec<&str>>();
+    let ignore = matches.get_one::<String>("ignore").unwrap();
     let target = matches.get_one::<String>("output_file").unwrap();
     let use_clipboard = matches.get_flag("clipboard");
 
-    match file_conc::concatenate_files(input_dir, ignore_patterns, target, use_clipboard) {
+    match file_conc::concatenate_files(input_dir, ignore, target, use_clipboard) {
         Ok(()) => (),
         Err(e) => eprintln!("Error: {}", e),
     }
