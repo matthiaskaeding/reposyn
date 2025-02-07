@@ -355,3 +355,4 @@ repo-synopsis.md
 cspell.config.yaml
 
 .DS_Store
+rust

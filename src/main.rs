@@ -24,7 +24,7 @@ fn main() {
                 .long("ignore")
                 .value_name("PATTERNS")
                 .help("Comma-separated paths to ignore (e.g., 'target,node_modules')")
-                .default_value(".git"),
+                .default_value("repo-synopsis.txt"),
         )
         .arg(
             Arg::new("summarize")
