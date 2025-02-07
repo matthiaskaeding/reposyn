@@ -1,5 +1,8 @@
-mod file_conc;
+mod file_merge;
 mod glob;
+mod input;
+mod summary;
+
 use clap::{Arg, Command};
 
 fn main() {
@@ -54,7 +57,7 @@ fn main() {
     let target = matches.get_one::<String>("output_file").unwrap();
     let use_clipboard = matches.get_flag("clipboard");
 
-    match file_conc::concatenate_files(input_dir, ignore, target, use_clipboard, summarize) {
+    match file_merge::merge_files(input_dir, ignore, target, use_clipboard, summarize) {
         Ok(()) => (),
         Err(e) => eprintln!("Error: {}", e),
     }
