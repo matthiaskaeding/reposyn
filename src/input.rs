@@ -139,7 +139,7 @@ pub fn input_files(
                     continue;
                 }
                 let path_string = path.display().to_string();
-                if glob_set.is_match(path_string.to_string()) {
+                if glob_set.is_match(&path_string) {
                     //println!("Summarazing this file: {}", path_string);
                     match input_summary(&path, output) {
                         Ok(()) => (),

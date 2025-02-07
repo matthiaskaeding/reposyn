@@ -67,7 +67,7 @@ pub fn input_summary(
 
     // Count sentences
     let sentence_count = contents
-        .split(|c| c == '.' || c == '!' || c == '?')
+        .split(|c| ['!', '?', '.'].contains(&c))
         .filter(|s| !s.trim().is_empty())
         .count();
 
