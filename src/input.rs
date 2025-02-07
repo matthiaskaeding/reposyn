@@ -182,7 +182,7 @@ pub fn input_files(
     writeln!(output, "</All paths>")?;
     if n_files > 0 {
         println!(
-            "Biggest files: path (size). Showing {} of {}",
+            "Biggest files completely written to output: path (size). Showing {} of {}",
             std::cmp::min(5, sizes.len()),
             n_files,
         );

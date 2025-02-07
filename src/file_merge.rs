@@ -51,6 +51,7 @@ pub fn merge_files(
     use_clipboard: bool,
     summarize: &str,
 ) -> Result<(), Box<dyn Error>> {
+    let start_time = std::time::Instant::now();
     let repo = match Repository::open(repo_dir) {
         Ok(repo) => repo,
         Err(e) => panic!("failed to open: {}", e),
@@ -92,7 +93,12 @@ pub fn merge_files(
         let content = String::from_utf8(buffer)?;
         let mut ctx = ClipboardContext::new().unwrap();
         ctx.set_contents(content.to_owned()).unwrap();
-        println!("Repo contents copied to clipboard!");
+
+        let duration = start_time.elapsed();
+        println!(
+            "Repo contents copied to clipboard. Took {:.2}s",
+            duration.as_secs_f64()
+        );
     } else {
         let mut file = File::create(target)?;
         write_repo_content(
@@ -102,7 +108,12 @@ pub fn merge_files(
             summarize_glob_patterns,
             &mut file,
         )?;
-        println!("Repo contents written to file: {}", target);
+        let duration = start_time.elapsed();
+        println!(
+            "Repo contents written to file: {}. Took {:.2}s",
+            target,
+            duration.as_secs_f64()
+        );
     }
 
     Ok(())
