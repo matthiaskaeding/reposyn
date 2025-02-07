@@ -23,17 +23,14 @@ pub fn input_context(input_dir: &str, output: &mut impl Write) -> Result<(), Box
             .to_string(); // Convert to owned String
         path
     } else {
-        input_dir.to_string() // Convert to owned String
+        input_dir.to_string()
     };
-
-    writeln!(
-        output,
-        "<context>
-You are an expert programming Al assistant who receives a summary of repo {} in XML format.
-Understand the contents of the repo.
-</context>\n\n",
+    let prompt = format!(
+        r#"You are an expert software engineer who receives a summary of repo called {}.
+    Analyze the repo, understand the problem the repo is solving."#,
         repo_name
-    )?;
+    );
+    writeln!(output, "<context>{}</context>\n\n", prompt)?;
 
     Ok(())
 }
@@ -91,7 +88,7 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
     Ok(())
 }
 
-// This is workhorse which loops over all files in the repo
+// Main workhorse which loops over all files in the repo
 pub fn input_files(
     repo_dir: &str,
     output: &mut impl Write,
@@ -112,8 +109,6 @@ pub fn input_files(
         .git_ignore(true)
         .build();
     let mut paths = Vec::new();
-
-    // Use Gitignore to match
     let mut glob_builder = GlobSetBuilder::new();
     for pattern in summarize_glob_patterns.iter() {
         glob_builder.add(Glob::new(pattern)?);
@@ -121,7 +116,7 @@ pub fn input_files(
     let glob_set = glob_builder.build()?;
 
     let mut n_files = 0;
-    'file_loop: for entry in walker {
+    for entry in walker {
         let path = match entry {
             Ok(entry) => entry.path().to_path_buf(),
             Err(err) => {
@@ -129,49 +124,53 @@ pub fn input_files(
                 continue;
             }
         };
-
-        if path.is_file() {
-            n_files += 1;
-            if let Some(extension) = path.extension() {
-                // Skip non-text file by simply looking at extension
-                let extension = extension.to_string_lossy().to_lowercase();
-                if !TEXT_EXTENSIONS.contains(&extension.as_str()) {
-                    continue;
-                }
-                let path_string = path.display().to_string();
-                if glob_set.is_match(&path_string) {
-                    //println!("Summarazing this file: {}", path_string);
-                    match input_summary(&path, output) {
-                        Ok(()) => (),
-                        Err(e) => eprintln!("Error: {}", e),
-                    }
-                    continue 'file_loop;
-                }
-
-                // Write contents into output
-                let mut content = String::new();
-                let mut file = File::open(&path)?;
-                file.read_to_string(&mut content)?;
-                writeln!(
-                    output,
-                    "<File:{}>\n{}</File:{}>\n",
-                    path_string, content, path_string
-                )?;
-
-                paths.push(path_string.clone());
-                // Store size
-                let metadata = path.metadata()?;
-                let size_pair = (metadata.len(), path_string.clone());
-                if sizes.len() < 5 {
-                    sizes.insert(size_pair);
-                } else if let Some(smallest) = sizes.first().cloned() {
-                    if size_pair > smallest {
-                        sizes.remove(&smallest); // Remove the smallest element
-                        sizes.insert(size_pair);
-                    }
-                }
+        if !path.is_file() {
+            continue;
+        }
+        n_files += 1;
+        // Skip non-text file by looking at extension
+        if let Some(extension) = path.extension() {
+            let extension = extension.to_string_lossy().to_lowercase();
+            if !TEXT_EXTENSIONS.contains(&extension.as_str()) {
+                continue;
             }
         }
+
+        let path_string = path.display().to_string();
+        if glob_set.is_match(&path_string) {
+            match input_summary(&path, output) {
+                Ok(()) => (),
+                Err(e) => eprintln!("Error: {}", e),
+            }
+            continue;
+        }
+
+        // Write contents into output
+        let mut content = String::new();
+        let mut file = File::open(&path)?;
+        file.read_to_string(&mut content)?;
+        writeln!(
+            output,
+            "<File:{}>\n{}</File:{}>\n",
+            path_string, content, path_string
+        )?;
+        paths.push(path_string.clone());
+
+        // Store size
+        let metadata = path.metadata()?;
+        let size_pair = (metadata.len(), path_string.clone());
+        if sizes.len() < 5 {
+            sizes.insert(size_pair);
+        } else if let Some(smallest) = sizes.first().cloned() {
+            if size_pair > smallest {
+                sizes.remove(&smallest); // Remove the smallest element
+                sizes.insert(size_pair);
+            }
+        }
+    }
+    if n_files == 0 {
+        println!("No files found");
+        return Ok(());
     }
 
     // Input paths
@@ -180,19 +179,16 @@ pub fn input_files(
         writeln!(output, "{}", p)?;
     }
     writeln!(output, "</All paths>")?;
-    if n_files > 0 {
-        println!(
-            "Biggest files completely written to output: path (size). Showing {} of {}",
-            std::cmp::min(5, sizes.len()),
-            n_files,
-        );
-        let mut count = 1;
-        for item in sizes.iter().rev() {
-            println!("{}: {} ({})", count, item.1, format_size(item.0));
-            count += 1;
-        }
-    } else {
-        println!("No files found");
+
+    println!(
+        "Biggest files completely written to output: path (size). Showing {} of {}",
+        std::cmp::min(5, sizes.len()),
+        n_files,
+    );
+    let mut count = 1;
+    for item in sizes.iter().rev() {
+        println!("{}: {} ({})", count, item.1, format_size(item.0));
+        count += 1;
     }
 
     Ok(())

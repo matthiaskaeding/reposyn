@@ -173,7 +173,8 @@ mod tests {
         input_context("./test-repo", &mut output)?;
 
         let output_str = String::from_utf8(output)?;
-        assert!(output_str.contains("summary of repo ./test-repo"));
+        assert!(output_str.contains("./test-repo"));
+        assert!(output_str.contains("engineer"));
         assert!(output_str.contains("<context>"));
         assert!(output_str.contains("</context>"));
         Ok(())
