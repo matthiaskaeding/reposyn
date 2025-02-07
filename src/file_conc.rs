@@ -1,3 +1,4 @@
+use crate::glob::gitignore_to_glob;
 use copypasta::{ClipboardContext, ClipboardProvider};
 use git2::Repository;
 use ignore::{overrides::OverrideBuilder, WalkBuilder};
@@ -228,7 +229,7 @@ fn input_files(
     repo_dir: &str,
     output: &mut impl Write,
     ignore_patterns: Vec<&str>,
-    summarize_patterns: Vec<&str>,
+    summarize_glob_patterns: Vec<String>,
 ) -> Result<(), Box<dyn Error>> {
     let mut sizes = BTreeSet::new();
 
@@ -315,12 +316,12 @@ fn write_repo_content(
     repo_dir: &str,
     repo: &Repository,
     ignore_patterns: Vec<&str>,
-    summarize_patterns: Vec<&str>,
+    summarize_glob_patterns: Vec<String>,
     output: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
     input_context(repo_dir, output)?;
     input_repo_stats(repo, output)?;
-    input_files(repo_dir, output, ignore_patterns, summarize_patterns)?;
+    input_files(repo_dir, output, ignore_patterns, summarize_glob_patterns)?;
     Ok(())
 }
 /// Main entry point for file concatenation functionality
@@ -353,16 +354,29 @@ pub fn concatenate_files(
     } else {
         ignore.split(",").collect::<Vec<&str>>()
     };
-    let summarize_v: Vec<&str> = if summarize.is_empty() {
-        Vec::new()
-    } else {
-        summarize.split(",").collect::<Vec<&str>>()
-    };
+
+    let mut summarize_glob_patterns: Vec<String> = Vec::new();
+    if !summarize.is_empty() {
+        let summarize_split = summarize.split(",");
+        for pattern in summarize_split {
+            let res = gitignore_to_glob(pattern);
+            match res {
+                Some(glob_pattern) => summarize_glob_patterns.push(glob_pattern),
+                None => panic!("Invalid gitignore pattern: '{}'", pattern),
+            }
+        }
+    }
 
     if use_clipboard {
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
-        write_repo_content(repo_dir, &repo, ignore_v, summarize_v, &mut cursor)?;
+        write_repo_content(
+            repo_dir,
+            &repo,
+            ignore_v,
+            summarize_glob_patterns,
+            &mut cursor,
+        )?;
 
         let content = String::from_utf8(buffer)?;
         let mut ctx = ClipboardContext::new().unwrap();
@@ -370,7 +384,13 @@ pub fn concatenate_files(
         println!("Repo contents copied to clipboard!");
     } else {
         let mut file = File::create(target)?;
-        write_repo_content(repo_dir, &repo, ignore_v, summarize_v, &mut file)?;
+        write_repo_content(
+            repo_dir,
+            &repo,
+            ignore_v,
+            summarize_glob_patterns,
+            &mut file,
+        )?;
         println!("Repo contents written to file: {}", target);
     }
 

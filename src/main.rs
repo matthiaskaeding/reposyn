@@ -1,4 +1,5 @@
 mod file_conc;
+mod glob;
 use clap::{Arg, Command};
 
 fn main() {
