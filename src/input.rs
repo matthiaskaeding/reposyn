@@ -124,7 +124,7 @@ pub fn input_files(
         };
 
         if path.is_file() {
-            n_files = n_files + 1;
+            n_files += 1;
             if let Some(extension) = path.extension() {
                 // Skip non-text file by simply looking at extension
                 let extension = extension.to_string_lossy().to_lowercase();
@@ -192,7 +192,7 @@ pub fn input_files(
         let mut count = 1;
         for item in sizes.iter().rev() {
             println!("{}: {} ({})", count, item.1, format_size(item.0));
-            count = count + 1;
+            count += 1;
         }
     } else {
         println!("No files found");
