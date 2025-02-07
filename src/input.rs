@@ -1,6 +1,6 @@
 use crate::summary::input_summary;
 use git2::Repository;
-use glob_match::glob_match;
+use globset::{Glob, GlobSetBuilder};
 use ignore::{overrides::OverrideBuilder, WalkBuilder};
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -113,6 +113,13 @@ pub fn input_files(
         .build();
     let mut paths = Vec::new();
 
+    // Use Gitignore to match
+    let mut glob_builder = GlobSetBuilder::new();
+    for pattern in summarize_glob_patterns.iter() {
+        glob_builder.add(Glob::new(pattern)?);
+    }
+    let glob_set = glob_builder.build()?;
+
     let mut n_files = 0;
     'file_loop: for entry in walker {
         let path = match entry {
@@ -131,24 +138,14 @@ pub fn input_files(
                 if !TEXT_EXTENSIONS.contains(&extension.as_str()) {
                     continue;
                 }
-                let mut path_string = path.display().to_string();
-                if let Some(rest) = path_string.strip_prefix("./") {
-                    path_string = rest.to_string();
-                }
-                // Summarize if applicable
-                for pattern in summarize_glob_patterns.iter() {
-                    let is_summary_match = glob_match(pattern.as_str(), path_string.as_str());
-                    println!(
-                        "File: {} Summary: {} Is match {}",
-                        path_string, pattern, is_summary_match
-                    );
-                    if is_summary_match {
-                        match input_summary(&path, output) {
-                            Ok(()) => (),
-                            Err(e) => eprintln!("Error: {}", e),
-                        }
-                        continue 'file_loop;
+                let path_string = path.display().to_string();
+                if glob_set.is_match(path_string.to_string()) {
+                    //println!("Summarazing this file: {}", path_string);
+                    match input_summary(&path, output) {
+                        Ok(()) => (),
+                        Err(e) => eprintln!("Error: {}", e),
                     }
+                    continue 'file_loop;
                 }
 
                 // Write contents into output

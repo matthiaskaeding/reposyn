@@ -269,4 +269,92 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_merge_files_with_summarize() -> Result<(), Box<dyn Error>> {
+        let (temp_dir, _) = setup_test_repo()?;
+
+        // Create a few different file types
+        fs::write(temp_dir.path().join("test1.json"), r#"{"key": "value"}"#)?;
+        fs::write(
+            temp_dir.path().join("test2.json"),
+            r#"{"another": "value"}"#,
+        )?;
+        fs::write(temp_dir.path().join("normal.txt"), "Regular text file")?;
+
+        let target_file = temp_dir.path().join("output.txt");
+
+        // Test summarizing all JSON files
+        merge_files(
+            temp_dir.path().to_str().unwrap(),
+            "", // no ignore patterns
+            &target_file.to_str().unwrap().to_string(),
+            false,
+            "*.json", // summarize all JSON files
+        )?;
+
+        let content = fs::read_to_string(&target_file)?;
+
+        // Check that JSON files were summarized
+        assert!(content.contains("Summary of file:"));
+        assert!(content.contains("test1.json"));
+        assert!(content.contains("test2.json"));
+
+        // The raw JSON content should not be present
+        assert!(!content.contains("<File:test1.json>"));
+
+        // Regular text file should be included normally
+        assert!(content.contains("Regular text file"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_merge_files_multiple_summarize_patterns() -> Result<(), Box<dyn Error>> {
+        println!("Starting multiple summarize patterns test");
+        let (temp_dir, _) = setup_test_repo()?;
+        println!("Test repo set up at: {:?}", temp_dir.path());
+
+        // Create different types of files
+        fs::write(temp_dir.path().join("data.json"), r#"{"data": "test"}"#)?;
+        fs::write(temp_dir.path().join("config.yaml"), "key: value")?;
+        fs::write(temp_dir.path().join("readme.md"), "# Title")?;
+        println!("Created test files");
+
+        let target_file = temp_dir.path().join("output.txt");
+        println!("Target file will be: {:?}", target_file);
+
+        // Test summarizing multiple file types
+        println!("Calling merge_files with patterns: *.json,*.yaml");
+        merge_files(
+            temp_dir.path().to_str().unwrap(),
+            "",
+            &target_file.to_str().unwrap().to_string(),
+            false,
+            "*.json,*.yaml", // summarize both JSON and YAML files
+        )?;
+
+        println!("Reading content from target file");
+        let content = fs::read_to_string(&target_file)?;
+        println!(
+            "\n--- BEGIN CONTENT ---\n{}\n--- END CONTENT ---\n",
+            content
+        );
+
+        // Check that both JSON and YAML files were summarized
+        println!("Checking for summaries");
+        assert!(content.contains("<Summary of file:") && content.contains("data.json"));
+        assert!(content.contains("<Summary of file:") && content.contains("config.yaml"));
+
+        // Raw content of summarized files should not be present
+        println!("Checking files not present");
+
+        assert!(!content.contains("<File:data.json>"));
+
+        // Markdown file should be included normally
+        println!("Checking markdown content");
+        assert!(content.contains("# Title"));
+
+        Ok(())
+    }
 }

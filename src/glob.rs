@@ -61,7 +61,6 @@ pub fn gitignore_to_glob(pattern: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glob_match::glob_match;
 
     #[test]
     fn test_basic_patterns() {
@@ -89,19 +88,6 @@ mod tests {
             gitignore_to_glob("\\#notacomment"),
             Some("**/#notacomment".to_string())
         );
-    }
-
-    #[test]
-    fn test_with_glob_match() {
-        let pattern = gitignore_to_glob("*.toml");
-        assert_eq!(pattern, Some("**/*.toml".to_string()));
-        match pattern {
-            Some(pattern) => {
-                let is_match = glob_match(pattern.as_str(), "Cargo.toml");
-                assert_eq!(is_match, true);
-            }
-            None => (),
-        }
     }
 
     #[test]
