@@ -19,50 +19,40 @@ pub fn gitignore_to_glob(pattern: &str) -> Option<String> {
     // Handle escaped patterns (starting with \)
     let pattern = pattern.strip_prefix('\\').unwrap_or(pattern);
 
-    // Handle negation patterns - we don't convert these as standard glob
-    // doesn't support negation
+    // Handle negation patterns - we don't convert these
     if pattern.starts_with('!') {
         return None;
     }
 
     let mut glob = String::new();
 
-    // Handle patterns starting with **
+    // First handle patterns starting with /
+    if let Some(rest) = pattern.strip_prefix('/') {
+        glob.push_str("./");
+        glob.push_str(rest);
+        if glob.ends_with('/') {
+            glob.push('*');
+        }
+        return Some(glob);
+    }
+
+    // Handle patterns with **
     if let Some(rest) = pattern.strip_prefix("**/") {
-        glob.push_str("**/**/"); // Match in all directories
+        glob.push_str("**/**/");
         glob.push_str(rest);
-    }
-    // Handle patterns ending with /**
-    else if let Some(rest) = pattern.strip_suffix("/**") {
+    } else if let Some(rest) = pattern.strip_suffix("/**") {
         glob.push_str(rest);
-        glob.push_str("/**/*"); // Match everything inside
-    }
-    // Handle patterns with /** / in the middle
-    else if pattern.contains("/**/") {
-        // Split by /**/ and join with **/ to match zero or more directories
-        for (i, part) in pattern.split("/**/").enumerate() {
-            if i > 0 {
-                glob.push_str("/**/");
-            }
-            glob.push_str(part);
-        }
-    }
-    // Handle directory-only patterns (ending with /)
-    else if pattern.ends_with('/') {
+        glob.push_str("/**/*");
+    } else if pattern.contains("/**/") {
+        // Keep the original pattern for /**/ cases
         glob.push_str(pattern);
-        glob.push('*'); // Match directory contents
-    }
-    // Handle basic patterns
-    else {
-        // If pattern starts with /, it's relative to .gitignore location
-        if let Some(rest) = pattern.strip_prefix('/') {
-            glob.push_str("./"); // Make it relative to current directory
-            glob.push_str(rest);
-        } else {
-            // Pattern can match at any level
-            glob.push_str("**/");
-            glob.push_str(pattern);
-        }
+    } else if pattern.ends_with('/') {
+        glob.push_str(pattern);
+        glob.push('*');
+    } else {
+        // Pattern can match at any level
+        glob.push_str("**/");
+        glob.push_str(pattern);
     }
 
     Some(glob)
@@ -71,6 +61,7 @@ pub fn gitignore_to_glob(pattern: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use glob_match::glob_match;
 
     #[test]
     fn test_basic_patterns() {
@@ -104,5 +95,98 @@ mod tests {
     fn test_with_glob_match() {
         let pattern = gitignore_to_glob("*.toml");
         assert_eq!(pattern, Some("**/*.toml".to_string()));
+        match pattern {
+            Some(pattern) => {
+                let is_match = glob_match(pattern.as_str(), "Cargo.toml");
+                assert_eq!(is_match, true);
+            }
+            None => (),
+        }
+    }
+
+    #[test]
+    fn test_invalid_patterns() {
+        assert_eq!(gitignore_to_glob(""), None);
+        assert_eq!(gitignore_to_glob("  "), None);
+        assert_eq!(gitignore_to_glob("\t"), None);
+        assert_eq!(gitignore_to_glob("#"), None);
+        assert_eq!(gitignore_to_glob("# comment"), None);
+        assert_eq!(gitignore_to_glob("!*.toml"), None);
+    }
+
+    #[test]
+    fn test_extended_patterns() {
+        // Basic patterns with different extensions
+        assert_eq!(gitignore_to_glob("*.toml"), Some("**/*.toml".to_string()));
+        assert_eq!(gitignore_to_glob("*.rs"), Some("**/*.rs".to_string()));
+        assert_eq!(
+            gitignore_to_glob("Cargo.toml"),
+            Some("**/Cargo.toml".to_string())
+        );
+
+        // Paths with multiple segments
+        assert_eq!(
+            gitignore_to_glob("src/*.rs"),
+            Some("**/src/*.rs".to_string())
+        );
+        assert_eq!(
+            gitignore_to_glob("/src/*.rs"),
+            Some("./src/*.rs".to_string())
+        );
+
+        // Directory patterns
+        assert_eq!(
+            gitignore_to_glob("node_modules/"),
+            Some("node_modules/*".to_string())
+        );
+        assert_eq!(
+            gitignore_to_glob("/node_modules/"),
+            Some("./node_modules/*".to_string())
+        );
+
+        // Complex patterns
+        assert_eq!(
+            gitignore_to_glob("src/**/test/*.rs"),
+            Some("src/**/test/*.rs".to_string())
+        );
+        assert_eq!(
+            gitignore_to_glob("**/src/test.rs"),
+            Some("**/**/src/test.rs".to_string())
+        );
+        // Changed this line to match the more correct pattern
+        assert_eq!(
+            gitignore_to_glob("build/**/*.js"),
+            Some("build/**/*.js".to_string())
+        );
+
+        // Special characters
+        assert_eq!(
+            gitignore_to_glob("*.{js,ts}"),
+            Some("**/*.{js,ts}".to_string())
+        );
+        assert_eq!(
+            gitignore_to_glob("[abc]*.rs"),
+            Some("**/[abc]*.rs".to_string())
+        );
+
+        // Whitespace handling
+        assert_eq!(gitignore_to_glob(" *.toml "), Some("**/*.toml".to_string()));
+        assert_eq!(gitignore_to_glob("\t*.rs\n"), Some("**/*.rs".to_string()));
+    }
+    #[test]
+    fn test_path_separators() {
+        // Test with different path separators
+        assert_eq!(
+            gitignore_to_glob("src/test"),
+            Some("**/src/test".to_string())
+        );
+        assert_eq!(
+            gitignore_to_glob("src\\test"),
+            Some("**/src\\test".to_string())
+        );
+        assert_eq!(
+            gitignore_to_glob("/src/test"),
+            Some("./src/test".to_string())
+        );
     }
 }
