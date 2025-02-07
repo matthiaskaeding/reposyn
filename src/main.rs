@@ -1,4 +1,8 @@
-mod file_conc;
+mod file_merge;
+mod glob;
+mod input;
+mod summary;
+
 use clap::{Arg, Command};
 
 fn main() {
@@ -20,7 +24,15 @@ fn main() {
                 .long("ignore")
                 .value_name("PATTERNS")
                 .help("Comma-separated paths to ignore (e.g., 'target,node_modules')")
-                .default_value("target,node_modules,.git"),
+                .default_value("repo-synopsis.txt"),
+        )
+        .arg(
+            Arg::new("summarize")
+                .short('s')
+                .long("summarize")
+                .value_name("SUMMARIZE")
+                .help("Comma-separated paths to summarise (e.g., '*.json' for all json files)")
+                .default_value(""),
         )
         .arg(
             Arg::new("output_file")
@@ -41,10 +53,11 @@ fn main() {
 
     let input_dir = matches.get_one::<String>("input_folder").unwrap();
     let ignore = matches.get_one::<String>("ignore").unwrap();
+    let summarize = matches.get_one::<String>("summarize").unwrap();
     let target = matches.get_one::<String>("output_file").unwrap();
     let use_clipboard = matches.get_flag("clipboard");
 
-    match file_conc::concatenate_files(input_dir, ignore, target, use_clipboard) {
+    match file_merge::merge_files(input_dir, ignore, target, use_clipboard, summarize) {
         Ok(()) => (),
         Err(e) => eprintln!("Error: {}", e),
     }

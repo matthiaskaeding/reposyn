@@ -1,198 +1,19 @@
+use crate::glob::gitignore_to_glob;
+use crate::input::{input_context, input_files, input_repo_stats};
 use copypasta::{ClipboardContext, ClipboardProvider};
 use git2::Repository;
-use ignore::{overrides::OverrideBuilder, WalkBuilder};
-use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs::File;
 use std::io::Cursor;
-use std::io::{Read, Write};
-use std::path::Path;
-use time::OffsetDateTime;
+use std::io::Write;
 
-const TEXT_EXTENSIONS: &[&str] = &[
-    "txt", "md", "rs", "py", "js", "json", "yaml", "yml", "toml", "css", "html", "htm", "xml",
-    "csv", "sh", "bash", "conf",
-];
-
-fn input_context(input_dir: &str, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
-    let repo_name = if input_dir == "./" {
-        let path = Path::new(".")
-            .canonicalize()?
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(input_dir)
-            .to_string(); // Convert to owned String
-        path
-    } else {
-        input_dir.to_string() // Convert to owned String
-    };
-
-    writeln!(
-        output,
-        "<context>
-You are an expert programming Al assistant who receives a summary of repo {} in XML format.
-Understand the contents of the repo.
-</context>\n\n",
-        repo_name
-    )?;
-
-    Ok(())
-}
-
-fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
-    let mut revwalk = repo.revwalk()?;
-    revwalk.push_head()?;
-
-    let mut count = 0;
-    let mut first_time = None;
-    let mut latest_time = None;
-    let mut recent_messages = Vec::new();
-
-    for commit_id in revwalk {
-        let commit = repo.find_commit(commit_id?)?;
-        let time = commit.time().seconds();
-
-        if count == 0 {
-            latest_time = Some(time);
-        }
-        if count < 3 {
-            if let Some(msg) = commit.message() {
-                recent_messages.push(msg.to_string());
-            }
-        }
-
-        first_time = Some(time);
-        count += 1;
-    }
-
-    writeln!(output, "<Repo statistics>")?;
-    if let (Some(first), Some(latest)) = (first_time, latest_time) {
-        let first_date = OffsetDateTime::from_unix_timestamp(first)?;
-        let latest_date = OffsetDateTime::from_unix_timestamp(latest)?;
-        writeln!(output, "<Total commits>{}</Total commits>", count)?;
-        writeln!(output, "<First commit>{}</First commit>", first_date)?;
-        writeln!(output, "<Latest commits>{}</Latest commits>", latest_date)?;
-    }
-    writeln!(output, "</Repo statistics>")?;
-
-    writeln!(output, "<Last three commit messages>")?;
-    for (i, msg) in recent_messages.iter().enumerate() {
-        let msg_clean: String = msg
-            .lines()
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<&str>>()
-            .join("\n");
-        writeln!(
-            output,
-            "<Commit_message_{}>{}</Commit_message_{}>",
-            i, msg_clean, i,
-        )?;
-    }
-    writeln!(output, "</Last three commit messages>\n\n")?;
-    Ok(())
-}
-
-fn format_size(size: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-    const TB: u64 = GB * 1024;
-
-    if size >= TB {
-        format!("{:.2} TB", size as f64 / TB as f64)
-    } else if size >= GB {
-        format!("{:.2} GB", size as f64 / GB as f64)
-    } else if size >= MB {
-        format!("{:.2} MB", size as f64 / MB as f64)
-    } else if size >= KB {
-        format!("{:.2} KB", size as f64 / KB as f64)
-    } else {
-        format!("{} B", size)
-    }
-}
-
-fn input_files(
-    repo_dir: &str,
-    output: &mut impl Write,
-    ignore_patterns: Vec<&str>,
-) -> Result<(), Box<dyn Error>> {
-    let mut sizes = BTreeSet::new();
-
-    let mut override_builder = OverrideBuilder::new(repo_dir);
-    for pattern in &ignore_patterns {
-        override_builder.add(&format!("!{}", pattern))?;
-    }
-    let overrides = override_builder.build()?;
-
-    let walker = WalkBuilder::new(repo_dir)
-        .hidden(true)
-        .overrides(overrides)
-        .git_ignore(true)
-        .build();
-    let mut paths = Vec::new();
-
-    for entry in walker {
-        let path = match entry {
-            Ok(entry) => entry.path().to_path_buf(),
-            Err(err) => {
-                println!("ERROR: {}", err);
-                continue;
-            }
-        };
-
-        if path.is_file() {
-            if let Some(extension) = path.extension() {
-                let extension = extension.to_string_lossy().to_lowercase();
-                if !TEXT_EXTENSIONS.contains(&extension.as_str()) {
-                    continue;
-                }
-
-                let path_string = path.display().to_string();
-                paths.push(path_string.clone());
-                // Write contents into output
-                let mut content = String::new();
-                let mut file = File::open(&path)?;
-                file.read_to_string(&mut content)?;
-                writeln!(
-                    output,
-                    "<File:{}>\n{}</File:{}>\n",
-                    path_string, content, path_string
-                )?;
-                // Store size
-                let metadata = path.metadata()?;
-                let size_pair = (metadata.len(), path_string);
-                if sizes.len() < 6 {
-                    sizes.insert(size_pair);
-                } else if let Some(smallest) = sizes.first().cloned() {
-                    if size_pair > smallest {
-                        sizes.remove(&smallest); // Remove the smallest element
-                        sizes.insert(size_pair);
-                    }
-                }
-            }
-        }
-    }
-
-    // Input paths
-    writeln!(output, "<All paths>")?;
-    for p in paths.iter() {
-        writeln!(output, "{}", p)?;
-    }
-    writeln!(output, "</All paths>")?;
-
-    println!("Five biggest files: path (size)");
-    for item in sizes.iter().rev() {
-        println!("{} ({})", item.1, format_size(item.0));
-    }
-
-    Ok(())
-}
 /// Coordinates the writing of all repository content
 ///
 /// # Arguments
 /// * `repo_dir` - The repository directory path
 /// * `repo` - Reference to the Git repository
 /// * `exclude_patterns` - Patterns of files/directories to exclude
+/// * `summarize_glob_patterns` - Patterns of files to summarize
 /// * `output` - The writer for the output
 ///
 /// # Returns
@@ -200,12 +21,13 @@ fn input_files(
 fn write_repo_content(
     repo_dir: &str,
     repo: &Repository,
-    exclude_patterns: Vec<&str>,
+    ignore_patterns: Vec<&str>,
+    summarize_glob_patterns: Vec<String>,
     output: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
     input_context(repo_dir, output)?;
     input_repo_stats(repo, output)?;
-    input_files(repo_dir, output, exclude_patterns)?;
+    input_files(repo_dir, output, ignore_patterns, summarize_glob_patterns)?;
     Ok(())
 }
 /// Main entry point for file concatenation functionality
@@ -222,12 +44,14 @@ fn write_repo_content(
 /// # Details
 /// Either writes the repository summary to a file or copies it to the system clipboard,
 /// depending on the use_clipboard parameter
-pub fn concatenate_files(
+pub fn merge_files(
     repo_dir: &str,
     ignore: &str,
     target: &String,
     use_clipboard: bool,
+    summarize: &str,
 ) -> Result<(), Box<dyn Error>> {
+    let start_time = std::time::Instant::now();
     let repo = match Repository::open(repo_dir) {
         Ok(repo) => repo,
         Err(e) => panic!("failed to open: {}", e),
@@ -237,19 +61,59 @@ pub fn concatenate_files(
     } else {
         ignore.split(",").collect::<Vec<&str>>()
     };
+
+    let mut summarize_glob_patterns: Vec<String> = Vec::new();
+    if !summarize.is_empty() {
+        let summarize_split = summarize.split(",");
+        for pattern in summarize_split {
+            let res = gitignore_to_glob(pattern);
+            match res {
+                Some(glob_pattern) => {
+                    // We'll need to ensure the glob_pattern has a lifetime that matches the Vec
+                    // This might require changes to gitignore_to_glob's return type
+                    // or storing the patterns differently depending on your use case
+                    summarize_glob_patterns.push(glob_pattern)
+                }
+                None => panic!("Invalid gitignore pattern: '{}'", pattern),
+            }
+        }
+    }
+
     if use_clipboard {
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
-        write_repo_content(repo_dir, &repo, ignore_v, &mut cursor)?;
+        write_repo_content(
+            repo_dir,
+            &repo,
+            ignore_v,
+            summarize_glob_patterns,
+            &mut cursor,
+        )?;
 
         let content = String::from_utf8(buffer)?;
         let mut ctx = ClipboardContext::new().unwrap();
         ctx.set_contents(content.to_owned()).unwrap();
-        println!("Repo contents copied to clipboard!");
+
+        let duration = start_time.elapsed();
+        println!(
+            "Repo contents copied to clipboard. Took {:.2}s",
+            duration.as_secs_f64()
+        );
     } else {
         let mut file = File::create(target)?;
-        write_repo_content(repo_dir, &repo, ignore_v, &mut file)?;
-        println!("Repo contents written to file: {}", target);
+        write_repo_content(
+            repo_dir,
+            &repo,
+            ignore_v,
+            summarize_glob_patterns,
+            &mut file,
+        )?;
+        let duration = start_time.elapsed();
+        println!(
+            "Repo contents written to file: {}. Took {:.2}s",
+            target,
+            duration.as_secs_f64()
+        );
     }
 
     Ok(())
@@ -258,6 +122,7 @@ pub fn concatenate_files(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::input::format_size;
     use git2::Repository;
     use std::error::Error;
     use std::fs::{self, File};
@@ -361,6 +226,7 @@ mod tests {
             temp_dir.path().to_str().unwrap(),
             &mut output,
             ignore_patterns,
+            Vec::new(),
         )?;
 
         let output_str = String::from_utf8(output)?;
@@ -382,6 +248,7 @@ mod tests {
             temp_dir.path().to_str().unwrap(),
             &repo,
             ignore_patterns,
+            Vec::new(),
             &mut output,
         )?;
 
@@ -394,21 +261,110 @@ mod tests {
     }
 
     #[test]
-    fn test_concatenate_files() -> Result<(), Box<dyn Error>> {
+    fn test_merge_files() -> Result<(), Box<dyn Error>> {
         let (temp_dir, _) = setup_test_repo()?;
         let target_file = temp_dir.path().join("output.txt");
 
-        concatenate_files(
+        merge_files(
             temp_dir.path().to_str().unwrap(),
             &String::from("*.bin"),
             &target_file.to_str().unwrap().to_string(),
             false,
+            "",
         )?;
 
         assert!(target_file.exists());
         let content = fs::read_to_string(&target_file)?;
         assert!(content.contains("<context>"));
         assert!(content.contains("<Repo statistics>"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_merge_files_with_summarize() -> Result<(), Box<dyn Error>> {
+        let (temp_dir, _) = setup_test_repo()?;
+
+        // Create a few different file types
+        fs::write(temp_dir.path().join("test1.json"), r#"{"key": "value"}"#)?;
+        fs::write(
+            temp_dir.path().join("test2.json"),
+            r#"{"another": "value"}"#,
+        )?;
+        fs::write(temp_dir.path().join("normal.txt"), "Regular text file")?;
+
+        let target_file = temp_dir.path().join("output.txt");
+
+        // Test summarizing all JSON files
+        merge_files(
+            temp_dir.path().to_str().unwrap(),
+            "", // no ignore patterns
+            &target_file.to_str().unwrap().to_string(),
+            false,
+            "*.json", // summarize all JSON files
+        )?;
+
+        let content = fs::read_to_string(&target_file)?;
+
+        // Check that JSON files were summarized
+        assert!(content.contains("Summary of file:"));
+        assert!(content.contains("test1.json"));
+        assert!(content.contains("test2.json"));
+
+        // The raw JSON content should not be present
+        assert!(!content.contains("<File:test1.json>"));
+
+        // Regular text file should be included normally
+        assert!(content.contains("Regular text file"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_merge_files_multiple_summarize_patterns() -> Result<(), Box<dyn Error>> {
+        println!("Starting multiple summarize patterns test");
+        let (temp_dir, _) = setup_test_repo()?;
+        println!("Test repo set up at: {:?}", temp_dir.path());
+
+        // Create different types of files
+        fs::write(temp_dir.path().join("data.json"), r#"{"data": "test"}"#)?;
+        fs::write(temp_dir.path().join("config.yaml"), "key: value")?;
+        fs::write(temp_dir.path().join("readme.md"), "# Title")?;
+        println!("Created test files");
+
+        let target_file = temp_dir.path().join("output.txt");
+        println!("Target file will be: {:?}", target_file);
+
+        // Test summarizing multiple file types
+        println!("Calling merge_files with patterns: *.json,*.yaml");
+        merge_files(
+            temp_dir.path().to_str().unwrap(),
+            "",
+            &target_file.to_str().unwrap().to_string(),
+            false,
+            "*.json,*.yaml", // summarize both JSON and YAML files
+        )?;
+
+        println!("Reading content from target file");
+        let content = fs::read_to_string(&target_file)?;
+        println!(
+            "\n--- BEGIN CONTENT ---\n{}\n--- END CONTENT ---\n",
+            content
+        );
+
+        // Check that both JSON and YAML files were summarized
+        println!("Checking for summaries");
+        assert!(content.contains("<Summary of file:") && content.contains("data.json"));
+        assert!(content.contains("<Summary of file:") && content.contains("config.yaml"));
+
+        // Raw content of summarized files should not be present
+        println!("Checking files not present");
+
+        assert!(!content.contains("<File:data.json>"));
+
+        // Markdown file should be included normally
+        println!("Checking markdown content");
+        assert!(content.contains("# Title"));
 
         Ok(())
     }

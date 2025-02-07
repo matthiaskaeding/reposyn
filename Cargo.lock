@@ -340,12 +340,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glob-match"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9985c9503b412198aa4197559e9a318524ebc4519c229bfa05a535828c950b9d"
-
-[[package]]
 name = "globset"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -770,6 +764,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex"
+version = "1.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b544ef1b4eac5dc2db33ea63606ae9ffcfac26c1416a2806ae0bf5f56b201191"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "regex-automata"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -793,8 +799,9 @@ dependencies = [
  "clap",
  "copypasta",
  "git2",
- "glob-match",
+ "globset",
  "ignore",
+ "regex",
  "tempfile",
  "time",
 ]
