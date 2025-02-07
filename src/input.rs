@@ -1,4 +1,6 @@
+use crate::summary::input_summary;
 use git2::Repository;
+use glob_match::glob_match;
 use ignore::{overrides::OverrideBuilder, WalkBuilder};
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -8,10 +10,9 @@ use std::path::Path;
 use time::OffsetDateTime;
 
 const TEXT_EXTENSIONS: &[&str] = &[
-    "txt", "md", "rs", "py", "js", "json", "yaml", "yml", "toml", "css", "html", "htm", "xml",
-    "csv", "sh", "bash", "conf",
+    "bash", "conf", "css", "csv", "htm", "html", "js", "json", "md", "py", "rs", "sh", "toml",
+    "txt", "xml", "yaml", "yml",
 ];
-
 pub fn input_context(input_dir: &str, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     let repo_name = if input_dir == "./" {
         let path = Path::new(".")
@@ -90,6 +91,7 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
     Ok(())
 }
 
+// This is workhorse which loops over all files in the repo
 pub fn input_files(
     repo_dir: &str,
     output: &mut impl Write,
@@ -111,7 +113,8 @@ pub fn input_files(
         .build();
     let mut paths = Vec::new();
 
-    for entry in walker {
+    let mut n_files = 0;
+    'file_loop: for entry in walker {
         let path = match entry {
             Ok(entry) => entry.path().to_path_buf(),
             Err(err) => {
@@ -121,14 +124,33 @@ pub fn input_files(
         };
 
         if path.is_file() {
+            n_files = n_files + 1;
             if let Some(extension) = path.extension() {
+                // Skip non-text file by simply looking at extension
                 let extension = extension.to_string_lossy().to_lowercase();
                 if !TEXT_EXTENSIONS.contains(&extension.as_str()) {
                     continue;
                 }
+                let mut path_string = path.display().to_string();
+                if path_string.starts_with("./") {
+                    path_string = path_string[2..].to_string();
+                }
+                // Summarize if applicable
+                for pattern in summarize_glob_patterns.iter() {
+                    let is_summary_match = glob_match(pattern.as_str(), path_string.as_str());
+                    println!(
+                        "File: {} Summary: {} Is match {}",
+                        path_string, pattern, is_summary_match
+                    );
+                    if is_summary_match {
+                        match input_summary(&path, output) {
+                            Ok(()) => (),
+                            Err(e) => eprintln!("Error: {}", e),
+                        }
+                        continue 'file_loop;
+                    }
+                }
 
-                let path_string = path.display().to_string();
-                paths.push(path_string.clone());
                 // Write contents into output
                 let mut content = String::new();
                 let mut file = File::open(&path)?;
@@ -138,10 +160,12 @@ pub fn input_files(
                     "<File:{}>\n{}</File:{}>\n",
                     path_string, content, path_string
                 )?;
+
+                paths.push(path_string.clone());
                 // Store size
                 let metadata = path.metadata()?;
-                let size_pair = (metadata.len(), path_string);
-                if sizes.len() < 6 {
+                let size_pair = (metadata.len(), path_string.clone());
+                if sizes.len() < 5 {
                     sizes.insert(size_pair);
                 } else if let Some(smallest) = sizes.first().cloned() {
                     if size_pair > smallest {
@@ -159,10 +183,19 @@ pub fn input_files(
         writeln!(output, "{}", p)?;
     }
     writeln!(output, "</All paths>")?;
-
-    println!("Five biggest files: path (size)");
-    for item in sizes.iter().rev() {
-        println!("{} ({})", item.1, format_size(item.0));
+    if n_files > 0 {
+        println!(
+            "Biggest files: path (size). Showing {} of {}",
+            std::cmp::min(5, sizes.len()),
+            n_files,
+        );
+        let mut count = 1;
+        for item in sizes.iter().rev() {
+            println!("{}: {} ({})", count, item.1, format_size(item.0));
+            count = count + 1;
+        }
+    } else {
+        println!("No files found");
     }
 
     Ok(())

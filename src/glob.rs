@@ -104,4 +104,10 @@ mod tests {
             Some("**/#notacomment".to_string())
         );
     }
+
+    #[test]
+    fn test_with_glob_match() {
+        let pattern = gitignore_to_glob("*.toml");
+        assert_eq!(pattern, Some("**/*.toml".to_string()));
+    }
 }

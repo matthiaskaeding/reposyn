@@ -67,7 +67,12 @@ pub fn merge_files(
         for pattern in summarize_split {
             let res = gitignore_to_glob(pattern);
             match res {
-                Some(glob_pattern) => summarize_glob_patterns.push(glob_pattern),
+                Some(glob_pattern) => {
+                    // We'll need to ensure the glob_pattern has a lifetime that matches the Vec
+                    // This might require changes to gitignore_to_glob's return type
+                    // or storing the patterns differently depending on your use case
+                    summarize_glob_patterns.push(glob_pattern)
+                }
                 None => panic!("Invalid gitignore pattern: '{}'", pattern),
             }
         }

@@ -1,31 +1,46 @@
+// Input summary of a text file
+// Might be extended later
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read};
+use std::io::Read;
+use std::io::Write;
 use std::path::PathBuf;
 
-fn summarize_text_file(filepath: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
+pub fn input_summary(
+    filepath: &PathBuf,
+    output: &mut impl Write,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Read file contents and get file size
     let mut file = File::open(filepath)?;
     let metadata = std::fs::metadata(filepath)?;
+
+    writeln!(output, "<Summary of file: {:?}>", filepath)?;
     let size_mb = metadata.len() as f64 / (1024.0 * 1024.0); // Convert bytes to MB
+    writeln!(output, "Size in mb: {}", size_mb)?;
 
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
 
     // Get first and last 3 lines
-    let reader = BufReader::new(File::open(filepath)?);
-    let lines: Vec<String> = reader.lines().collect::<Result<_, _>>()?;
-    let first_three = lines.iter().take(3).cloned().collect::<Vec<_>>();
-    let last_three = lines
-        .iter()
-        .rev()
-        .take(3)
-        .rev()
-        .cloned()
-        .collect::<Vec<_>>();
+    let lines: Vec<&str> = contents.lines().collect();
 
-    // Compile regex patterns
+    writeln!(output, "<First 3 lines>")?;
+    for line in lines.iter().take(3) {
+        writeln!(output, "{}", line)?;
+    }
+    writeln!(output, "</First 3 lines>")?;
+
+    writeln!(output, "<Last 3 lines>")?;
+    if lines.len() > 3 {
+        let lines_to_write = lines.iter().skip(lines.len() - 3);
+        for line in lines_to_write {
+            writeln!(output, "{}", line)?;
+        }
+    }
+    writeln!(output, "</Last 3 lines>")?;
+
+    // Count occurences
     let email_regex = Regex::new(r"[\w\.-]+@[\w\.-]+\.\w+")?;
     let url_regex = Regex::new(
         r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+",
@@ -77,40 +92,29 @@ fn summarize_text_file(filepath: &PathBuf) -> Result<String, Box<dyn std::error:
     word_pairs.sort_by(|a, b| b.1.cmp(&a.1));
     let top_words = word_pairs.into_iter().take(5);
 
-    // Format output
-    let mut output = String::new();
-    output.push_str("=== Text Analysis ===\n\n");
+    writeln!(output, "File Info:")?;
+    writeln!(output, "- Size: {:.2} MB\n", size_mb)?;
 
-    output.push_str("File Info:\n");
-    output.push_str(&format!("- Size: {:.2} MB\n\n", size_mb));
+    writeln!(output, "Pattern Counts:")?;
+    writeln!(output, "- Emails found: {}", email_count)?;
+    writeln!(output, "- URLs found: {}", url_count)?;
+    writeln!(output, "- Dates found: {}", date_count)?;
+    writeln!(output, "- Sentences: {}", sentence_count)?;
+    writeln!(output, "- Unique words: {}\n", unique_words.len())?;
 
-    output.push_str("Pattern Counts:\n");
-    output.push_str(&format!("- Emails found: {}\n", email_count));
-    output.push_str(&format!("- URLs found: {}\n", url_count));
-    output.push_str(&format!("- Dates found: {}\n", date_count));
-    output.push_str(&format!("- Sentences: {}\n", sentence_count));
-    output.push_str(&format!("- Unique words: {}\n\n", unique_words.len()));
-
-    output.push_str("Top 5 Words:\n");
+    writeln!(output, "Top 5 Words:")?;
     for (word, count) in top_words {
-        output.push_str(&format!("- {} ({})\n", word, count));
+        writeln!(output, "- {} ({})", word, count)?;
     }
-    output.push('\n');
+    writeln!(output)?;
 
-    output.push_str("Top 5 Special Characters:\n");
+    writeln!(output, "Top 5 Special Characters:")?;
     for (char, count) in top_special_chars {
-        output.push_str(&format!("- '{}' ({})\n", char, count));
+        writeln!(output, "- '{}' ({})", char, count)?;
     }
-    output.push('\n');
+    writeln!(output)?;
 
-    output.push_str("First 3 lines:\n");
-    for line in first_three {
-        output.push_str(&format!("{}\n", line));
-    }
-    output.push_str("\nLast 3 lines:\n");
-    for line in last_three {
-        output.push_str(&format!("{}\n", line));
-    }
-
-    Ok(output)
+    // Done
+    writeln!(output, "</Summary of file: {:?}>", filepath)?;
+    Ok(())
 }
