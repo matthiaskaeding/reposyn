@@ -132,8 +132,8 @@ pub fn input_files(
                     continue;
                 }
                 let mut path_string = path.display().to_string();
-                if path_string.starts_with("./") {
-                    path_string = path_string[2..].to_string();
+                if let Some(rest) = path_string.strip_prefix("./") {
+                    path_string = rest.to_string();
                 }
                 // Summarize if applicable
                 for pattern in summarize_glob_patterns.iter() {

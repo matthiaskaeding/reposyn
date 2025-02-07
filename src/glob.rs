@@ -17,11 +17,7 @@ pub fn gitignore_to_glob(pattern: &str) -> Option<String> {
     }
 
     // Handle escaped patterns (starting with \)
-    let pattern = if pattern.starts_with('\\') {
-        &pattern[1..]
-    } else {
-        pattern
-    };
+    let pattern = pattern.strip_prefix('\\').unwrap_or(pattern);
 
     // Handle negation patterns - we don't convert these as standard glob
     // doesn't support negation
@@ -32,14 +28,13 @@ pub fn gitignore_to_glob(pattern: &str) -> Option<String> {
     let mut glob = String::new();
 
     // Handle patterns starting with **
-    if pattern.starts_with("**/") {
+    if let Some(rest) = pattern.strip_prefix("**/") {
         glob.push_str("**/**/"); // Match in all directories
-        let rest = &pattern[3..];
         glob.push_str(rest);
     }
     // Handle patterns ending with /**
-    else if pattern.ends_with("/**") {
-        glob.push_str(&pattern[..pattern.len() - 3]);
+    else if let Some(rest) = pattern.strip_suffix("/**") {
+        glob.push_str(rest);
         glob.push_str("/**/*"); // Match everything inside
     }
     // Handle patterns with /** / in the middle
@@ -60,9 +55,9 @@ pub fn gitignore_to_glob(pattern: &str) -> Option<String> {
     // Handle basic patterns
     else {
         // If pattern starts with /, it's relative to .gitignore location
-        if pattern.starts_with('/') {
+        if let Some(rest) = pattern.strip_prefix('/') {
             glob.push_str("./"); // Make it relative to current directory
-            glob.push_str(&pattern[1..]);
+            glob.push_str(rest);
         } else {
             // Pattern can match at any level
             glob.push_str("**/");
