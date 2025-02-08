@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .short('i')
                 .long("ignore")
                 .value_name("PATTERNS")
-                .help("Comma-separated paths to ignore (e.g., 'target,node_modules')")
+                .help("Comma-separated paths to ignore with .gitignore semantics (e.g., 'target,*.md')")
                 .default_value("repo-synopsis.txt"),
         )
         .arg(
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .short('s')
                 .long("summarize")
                 .value_name("SUMMARIZE")
-                .help("Comma-separated paths to summarise (e.g., '*.json' for all json files)")
+                .help("Comma-separated paths to summarise  with .gitignore (e.g., '*.json' for all json files)")
                 .default_value(""),
         )
         .arg(
@@ -60,10 +60,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::new("extensions_text")
                 .short('e')
                 .long("extensions")
-                .help("Comma seperated string of extensions marking text files - other files will not be included")
+                .help("Comma seperated string of extensions (without leading '.') marking text files - other files will not be included")
                 .default_value(
                     "bash,conf,css,csv,htm,html,js,json,md,py,rs,sh,toml,txt,xml,yaml,yml",
                 ),
+        )
+        .arg(
+            Arg::new("extensions_additional")
+                .long("ext-add")
+                .help("Comma seperate string of additional extensions (without leading '.')")
+                .default_value("")
         )
         .get_matches();
 
@@ -81,17 +87,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_string();
     let use_clipboard = matches.get_flag("clipboard");
     let extensions = matches.get_one::<String>("extensions_text").unwrap();
-
+    let additional_extensions = matches.get_one::<String>("extensions_additional").unwrap();
     let ignore_patterns: Vec<String> = if ignore.is_empty() {
         Vec::new()
     } else {
         ignore.split(",").map(String::from).collect()
     };
-    let text_extensions: HashSet<_> = extensions
-        .split(',')
-        .map(str::trim)
-        .map(String::from)
-        .collect();
+
+    let text_extensions = {
+        let mut temp: HashSet<_> = extensions
+            .split(',')
+            .map(str::trim)
+            .map(String::from)
+            .collect();
+        if !additional_extensions.is_empty() {
+            temp.extend(
+                additional_extensions
+                    .split(',')
+                    .map(str::trim)
+                    .map(String::from),
+            );
+        }
+        temp
+    };
 
     let mut summarize_patterns: Vec<String> = Vec::new();
     if !summarize.is_empty() {
