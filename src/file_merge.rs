@@ -1,35 +1,11 @@
-use crate::glob::gitignore_to_glob;
+use crate::config::RepoConfig;
 use crate::input::{input_context, input_files, input_repo_stats};
 use copypasta::{ClipboardContext, ClipboardProvider};
-use git2::Repository;
 use std::error::Error;
 use std::fs::File;
 use std::io::Cursor;
 use std::io::Write;
 
-/// Coordinates the writing of all repository content
-///
-/// # Arguments
-/// * `repo_dir` - The repository directory path
-/// * `repo` - Reference to the Git repository
-/// * `exclude_patterns` - Patterns of files/directories to exclude
-/// * `summarize_glob_patterns` - Patterns of files to summarize
-/// * `output` - The writer for the output
-///
-/// # Returns
-/// * `Result<(), Box<dyn Error>>` - Success or error during writing
-fn write_repo_content(
-    repo_dir: &str,
-    repo: &Repository,
-    ignore_patterns: Vec<&str>,
-    summarize_glob_patterns: Vec<String>,
-    output: &mut impl Write,
-) -> Result<(), Box<dyn Error>> {
-    input_context(repo_dir, output)?;
-    input_repo_stats(repo, output)?;
-    input_files(repo_dir, output, ignore_patterns, summarize_glob_patterns)?;
-    Ok(())
-}
 /// Main entry point for file concatenation functionality
 ///
 /// # Arguments
@@ -44,51 +20,13 @@ fn write_repo_content(
 /// # Details
 /// Either writes the repository summary to a file or copies it to the system clipboard,
 /// depending on the use_clipboard parameter
-pub fn merge_files(
-    repo_dir: &str,
-    ignore: &str,
-    target: &String,
-    use_clipboard: bool,
-    summarize: &str,
-) -> Result<(), Box<dyn Error>> {
+pub fn merge_files(config: &RepoConfig) -> Result<(), Box<dyn Error>> {
     let start_time = std::time::Instant::now();
-    let repo = match Repository::open(repo_dir) {
-        Ok(repo) => repo,
-        Err(e) => panic!("failed to open: {}", e),
-    };
-    let ignore_v: Vec<&str> = if ignore.is_empty() {
-        Vec::new()
-    } else {
-        ignore.split(",").collect::<Vec<&str>>()
-    };
 
-    let mut summarize_glob_patterns: Vec<String> = Vec::new();
-    if !summarize.is_empty() {
-        let summarize_split = summarize.split(",");
-        for pattern in summarize_split {
-            let res = gitignore_to_glob(pattern);
-            match res {
-                Some(glob_pattern) => {
-                    // We'll need to ensure the glob_pattern has a lifetime that matches the Vec
-                    // This might require changes to gitignore_to_glob's return type
-                    // or storing the patterns differently depending on your use case
-                    summarize_glob_patterns.push(glob_pattern)
-                }
-                None => panic!("Invalid gitignore pattern: '{}'", pattern),
-            }
-        }
-    }
-
-    if use_clipboard {
+    if config.use_clipboard {
         let mut buffer = Vec::new();
-        let mut cursor = Cursor::new(&mut buffer);
-        write_repo_content(
-            repo_dir,
-            &repo,
-            ignore_v,
-            summarize_glob_patterns,
-            &mut cursor,
-        )?;
+        let mut output = Cursor::new(&mut buffer);
+        write_repo_content(config, &mut output)?;
 
         let content = String::from_utf8(buffer)?;
         let mut ctx = ClipboardContext::new().unwrap();
@@ -100,21 +38,34 @@ pub fn merge_files(
             duration.as_secs_f64()
         );
     } else {
-        let mut file = File::create(target)?;
-        write_repo_content(
-            repo_dir,
-            &repo,
-            ignore_v,
-            summarize_glob_patterns,
-            &mut file,
-        )?;
+        let mut file = File::create(&config.output_file)?;
+        write_repo_content(config, &mut file)?;
         let duration = start_time.elapsed();
         println!(
             "Repo contents written to file: {}. Took {:.2}s",
-            target,
+            &config.output_file,
             duration.as_secs_f64()
         );
     }
+
+    Ok(())
+}
+
+/// Coordinates the writing of all repository content
+///
+/// # Arguments
+/// * `repo_dir` - The repository directory path
+/// * `repo` - Reference to the Git repository
+/// * `exclude_patterns` - Patterns of files/directories to exclude
+/// * `summarize_glob_patterns` - Patterns of files to summarize
+/// * `output` - The writer for the output
+///
+/// # Returns
+/// * `Result<(), Box<dyn Error>>` - Success or error during writing
+fn write_repo_content(config: &RepoConfig, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
+    input_context(&config.repo_name, output)?;
+    input_repo_stats(&config.repo, output)?;
+    input_files(config, output)?;
 
     Ok(())
 }

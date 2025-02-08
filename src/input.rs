@@ -1,3 +1,4 @@
+use crate::config::RepoConfig;
 use crate::summary::input_summary;
 use git2::Repository;
 use globset::{Glob, GlobSetBuilder};
@@ -6,25 +7,9 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::Path;
 use time::OffsetDateTime;
 
-const TEXT_EXTENSIONS: &[&str] = &[
-    "bash", "conf", "css", "csv", "htm", "html", "js", "json", "md", "py", "rs", "sh", "toml",
-    "txt", "xml", "yaml", "yml",
-];
-pub fn input_context(input_dir: &str, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
-    let repo_name = if input_dir == "./" {
-        let path = Path::new(".")
-            .canonicalize()?
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(input_dir)
-            .to_string(); // Convert to owned String
-        path
-    } else {
-        input_dir.to_string()
-    };
+pub fn input_context(repo_name: &str, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     let prompt = format!(
         r#"You are an expert software engineer who receives a summary of repo called {}.
     Analyze the repo, understand the problem the repo is solving."#,
@@ -89,28 +74,23 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
 }
 
 // Main workhorse which loops over all files in the repo
-pub fn input_files(
-    repo_dir: &str,
-    output: &mut impl Write,
-    ignore_patterns: Vec<&str>,
-    summarize_glob_patterns: Vec<String>,
-) -> Result<(), Box<dyn Error>> {
+pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     let mut sizes = BTreeSet::new();
 
-    let mut override_builder = OverrideBuilder::new(repo_dir);
-    for pattern in &ignore_patterns {
+    let mut override_builder = OverrideBuilder::new(&config.repo_dir);
+    for pattern in config.ignore_patterns.iter() {
         override_builder.add(&format!("!{}", pattern))?;
     }
     let overrides = override_builder.build()?;
 
-    let walker = WalkBuilder::new(repo_dir)
+    let walker = WalkBuilder::new(&config.repo_dir)
         .hidden(true)
         .overrides(overrides)
         .git_ignore(true)
         .build();
     let mut paths = Vec::new();
     let mut glob_builder = GlobSetBuilder::new();
-    for pattern in summarize_glob_patterns.iter() {
+    for pattern in config.summarize_patterns.iter() {
         glob_builder.add(Glob::new(pattern)?);
     }
     let glob_set = glob_builder.build()?;
@@ -131,7 +111,7 @@ pub fn input_files(
         // Skip non-text file by looking at extension
         if let Some(extension) = path.extension() {
             let extension = extension.to_string_lossy().to_lowercase();
-            if !TEXT_EXTENSIONS.contains(&extension.as_str()) {
+            if !config.text_extensions.contains(&extension) {
                 continue;
             }
         }
