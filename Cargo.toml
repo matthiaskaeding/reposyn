@@ -3,6 +3,7 @@ name = "reposyn"
 version = "0.1.0"
 edition = "2021"
 [dependencies]
+rayon = "1.10.0"
 git2 = "0.20.0"
 time = "0.3"
 ignore = "0.4.10"

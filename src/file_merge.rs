@@ -5,6 +5,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Cursor;
 use std::io::Write;
+use std::sync::Mutex;
 
 /// Main entry point for file concatenation functionality
 ///
@@ -60,6 +61,7 @@ pub fn merge_files(config: &RepoConfig) -> Result<(), Box<dyn Error>> {
 fn write_repo_content(config: &RepoConfig, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     input_context(&config.repo_name, output)?;
     input_repo_stats(&config.repo, output)?;
+    let output = Mutex::new(output);
     input_files(config, output)?;
 
     Ok(())
