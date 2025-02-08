@@ -194,3 +194,137 @@ pub fn format_size(size: u64) -> String {
         format!("{} B", size)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::setup_test_repo;
+    use std::fs;
+
+    #[test]
+    fn test_input_context() -> Result<(), Box<dyn Error>> {
+        let mut output = Vec::new();
+        input_context("test-repo", &mut output)?;
+
+        let result = String::from_utf8(output)?;
+        assert!(result.contains("You are an expert software engineer"));
+        assert!(result.contains("test-repo"));
+        assert!(result.starts_with("<context>"));
+        assert!(result.contains("</context>"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_input_repo_stats() -> Result<(), Box<dyn Error>> {
+        let (_temp_dir, config) = setup_test_repo()?;
+        let mut output = Vec::new();
+
+        input_repo_stats(&config.repo, &mut output)?;
+
+        let result = String::from_utf8(output)?;
+        assert!(result.contains("<Repo statistics>"));
+        assert!(result.contains("<Total commits>1</Total commits>"));
+        assert!(result.contains("<First commit>"));
+        assert!(result.contains("<Latest commits>"));
+        assert!(result.contains("</Repo statistics>"));
+        assert!(result.contains("<Last three commit messages>"));
+        assert!(result.contains("<Commit_message_0>Initial commit</Commit_message_0>"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_input_files() -> Result<(), Box<dyn Error>> {
+        let (_temp_dir, config) = setup_test_repo()?;
+
+        // Create additional test files
+        fs::write(
+            config.repo_path.join("test1.txt"),
+            "First test file content",
+        )?;
+        fs::write(
+            config.repo_path.join("test2.txt"),
+            "Second test file content",
+        )?;
+        fs::write(config.repo_path.join("test.json"), r#"{"key": "value"}"#)?;
+
+        let mut output = Vec::new();
+        input_files(&config, &mut output)?;
+
+        let result = String::from_utf8(output)?;
+
+        // Check if files are included
+        assert!(result.contains("<File:"));
+        assert!(result.contains("test1.txt"));
+        assert!(result.contains("test2.txt"));
+        assert!(result.contains("First test file content"));
+        assert!(result.contains("Second test file content"));
+
+        // Check if paths section exists
+        assert!(result.contains("<All paths>"));
+        assert!(result.contains("</All paths>"));
+
+        // Test file extension filtering
+        assert!(!result.contains("test.json")); // JSON files should be excluded by default
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_input_files_with_ignore_patterns() -> Result<(), Box<dyn Error>> {
+        let (_temp_dir, mut config) = setup_test_repo()?;
+
+        // Add ignore pattern
+        config.ignore_patterns = vec!["test1.txt".to_string()];
+
+        // Create test files
+        fs::write(config.repo_path.join("test1.txt"), "Should be ignored")?;
+        fs::write(config.repo_path.join("test2.txt"), "Should be included")?;
+
+        let mut output = Vec::new();
+        input_files(&config, &mut output)?;
+
+        let result = String::from_utf8(output)?;
+        assert!(!result.contains("Should be ignored"));
+        assert!(result.contains("Should be included"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_size() {
+        assert_eq!(format_size(500), "500 B");
+        assert_eq!(format_size(1024), "1.00 KB");
+        assert_eq!(format_size(1024 * 1024), "1.00 MB");
+        assert_eq!(format_size(1024 * 1024 * 1024), "1.00 GB");
+        assert_eq!(format_size(1024 * 1024 * 1024 * 1024), "1.00 TB");
+    }
+
+    #[test]
+    fn test_input_files_with_summarize_patterns() -> Result<(), Box<dyn Error>> {
+        let (_temp_dir, mut config) = setup_test_repo()?;
+
+        // Add summarize pattern for json files
+        config.summarize_patterns = vec!["**/*.json".to_string()];
+        config.text_extensions.insert("json".to_string());
+
+        // Create test files
+        fs::write(config.repo_path.join("test.txt"), "Regular text file")?;
+        fs::write(
+            config.repo_path.join("test.json"),
+            r#"{"key": "value", "array": [1,2,3]}"#,
+        )?;
+
+        let mut output = Vec::new();
+        input_files(&config, &mut output)?;
+
+        let result = String::from_utf8(output)?;
+        assert!(result.contains("<Summary of file:"));
+        assert!(result.contains("test.json"));
+        assert!(result.contains("<File:"));
+        assert!(result.contains("test.txt"));
+
+        Ok(())
+    }
+}

@@ -82,7 +82,7 @@ mod tests {
         let content = fs::read_to_string(config.output_file)?;
         assert!(content.contains("<context>"));
         assert!(content.contains("<Repo statistics>"));
-        assert!(content.contains("Test content")); // Content from our test file
+        assert!(content.contains("Test content"));
 
         Ok(())
     }

@@ -38,11 +38,15 @@ pub(crate) fn setup_test_repo() -> Result<(TempDir, RepoConfig), Box<dyn Error>>
         &tree,
         &[],
     )?;
-
+    let output_file = temp_dir
+        .path()
+        .join("test_output.txt")
+        .to_string_lossy()
+        .into_owned();
     let config = RepoConfig::new(
         repo_path,
         false,
-        "test_output.txt".to_string(),
+        output_file,
         Vec::new(),
         Vec::new(),
         HashSet::from(["txt".to_string()]),
