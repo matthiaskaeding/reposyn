@@ -77,13 +77,13 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
 pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     let mut sizes = BTreeSet::new();
 
-    let mut override_builder = OverrideBuilder::new(&config.repo_dir);
+    let mut override_builder = OverrideBuilder::new(&config.repo_path);
     for pattern in config.ignore_patterns.iter() {
         override_builder.add(&format!("!{}", pattern))?;
     }
     let overrides = override_builder.build()?;
 
-    let walker = WalkBuilder::new(&config.repo_dir)
+    let walker = WalkBuilder::new(&config.repo_path)
         .hidden(true)
         .overrides(overrides)
         .git_ignore(true)

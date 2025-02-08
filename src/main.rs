@@ -1,8 +1,6 @@
 use crate::glob::gitignore_to_glob;
 
-use git2::Repository;
 use std::collections::HashSet;
-use std::path::Path;
 mod config;
 mod file_merge;
 mod glob;
@@ -10,6 +8,9 @@ mod input;
 mod summary;
 use clap::{Arg, Command};
 pub use config::RepoConfig;
+
+#[cfg(test)]
+pub(crate) mod test_utils;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("reposyn")
@@ -66,10 +67,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
-    let repo_dir = matches
+    let created_at = std::time::Instant::now();
+    let input_folder = matches
         .get_one::<String>("input_folder")
         .unwrap()
         .to_string();
+    let repo_path = std::path::PathBuf::from(input_folder);
     let ignore = matches.get_one::<String>("ignore").unwrap();
     let summarize = matches.get_one::<String>("summarize").unwrap();
     let output_file = matches
@@ -79,11 +82,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let use_clipboard = matches.get_flag("clipboard");
     let extensions = matches.get_one::<String>("extensions_text").unwrap();
 
-    // Build the values for the RepoConfig from the arguments
-    let repo = match Repository::open(&repo_dir) {
-        Ok(repo) => repo,
-        Err(e) => panic!("failed to open: {}", e),
-    };
     let ignore_patterns: Vec<String> = if ignore.is_empty() {
         Vec::new()
     } else {
@@ -101,38 +99,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for pattern in summarize_split {
             let res = gitignore_to_glob(pattern);
             match res {
-                Some(glob_pattern) => {
-                    // We'll need to ensure the glob_pattern has a lifetime that matches the Vec
-                    // This might require changes to gitignore_to_glob's return type
-                    // or storing the patterns differently depending on your use case
-                    summarize_patterns.push(glob_pattern)
-                }
+                Some(glob_pattern) => summarize_patterns.push(glob_pattern),
                 None => panic!("Invalid gitignore pattern: '{}'", pattern),
             }
         }
     }
 
-    let repo_name = if repo_dir == "./" {
-        let path = Path::new(".")
-            .canonicalize()?
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(&repo_dir)
-            .to_string(); // Convert to owned String
-        path
-    } else {
-        repo_dir.to_string()
-    };
-    let config = RepoConfig {
-        repo_dir,
-        repo_name,
-        repo,
+    let config = RepoConfig::new(
+        repo_path,
         use_clipboard,
         output_file,
         ignore_patterns,
         summarize_patterns,
         text_extensions,
-    };
+        created_at,
+    )?;
 
     file_merge::merge_files(&config)?;
     Ok(())
