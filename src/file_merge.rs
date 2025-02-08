@@ -59,7 +59,7 @@ pub fn merge_files(config: &RepoConfig) -> Result<(), Box<dyn Error>> {
 /// * `Result<(), Box<dyn Error>>` - Success or error during writing
 fn write_repo_content(config: &RepoConfig, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     input_context(&config.repo_name, output)?;
-    input_repo_stats(&config.repo, output)?;
+    input_repo_stats(config, output)?;
     input_files(config, output)?;
 
     Ok(())
