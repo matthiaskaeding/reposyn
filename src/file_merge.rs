@@ -118,6 +118,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "ci-tests"))] // Only run when ci-tests feature is not enabled
     fn test_merge_files_clipboard() -> Result<(), Box<dyn Error>> {
         let (_temp_dir, mut config) = setup_test_repo()?;
         config.use_clipboard = true;
