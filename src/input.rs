@@ -1,3 +1,4 @@
+use crate::config::RepoConfig;
 use crate::summary::input_summary;
 use git2::Repository;
 use globset::{Glob, GlobSetBuilder};
@@ -6,34 +7,15 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::Path;
 use time::OffsetDateTime;
 
-const TEXT_EXTENSIONS: &[&str] = &[
-    "bash", "conf", "css", "csv", "htm", "html", "js", "json", "md", "py", "rs", "sh", "toml",
-    "txt", "xml", "yaml", "yml",
-];
-pub fn input_context(input_dir: &str, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
-    let repo_name = if input_dir == "./" {
-        let path = Path::new(".")
-            .canonicalize()?
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(input_dir)
-            .to_string(); // Convert to owned String
-        path
-    } else {
-        input_dir.to_string() // Convert to owned String
-    };
-
-    writeln!(
-        output,
-        "<context>
-You are an expert programming Al assistant who receives a summary of repo {} in XML format.
-Understand the contents of the repo.
-</context>\n\n",
+pub fn input_context(repo_name: &str, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
+    let prompt = format!(
+        r#"You are an expert software engineer who receives a summary of repo called {}.
+    Analyze the repo, understand the problem the repo is solving."#,
         repo_name
-    )?;
+    );
+    writeln!(output, "<context>{}</context>\n\n", prompt)?;
 
     Ok(())
 }
@@ -91,37 +73,30 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
     Ok(())
 }
 
-// This is workhorse which loops over all files in the repo
-pub fn input_files(
-    repo_dir: &str,
-    output: &mut impl Write,
-    ignore_patterns: Vec<&str>,
-    summarize_glob_patterns: Vec<String>,
-) -> Result<(), Box<dyn Error>> {
+// Main workhorse which loops over all files in the repo
+pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     let mut sizes = BTreeSet::new();
 
-    let mut override_builder = OverrideBuilder::new(repo_dir);
-    for pattern in &ignore_patterns {
+    let mut override_builder = OverrideBuilder::new(&config.repo_path);
+    for pattern in config.ignore_patterns.iter() {
         override_builder.add(&format!("!{}", pattern))?;
     }
     let overrides = override_builder.build()?;
 
-    let walker = WalkBuilder::new(repo_dir)
+    let walker = WalkBuilder::new(&config.repo_path)
         .hidden(true)
         .overrides(overrides)
         .git_ignore(true)
         .build();
     let mut paths = Vec::new();
-
-    // Use Gitignore to match
     let mut glob_builder = GlobSetBuilder::new();
-    for pattern in summarize_glob_patterns.iter() {
+    for pattern in config.summarize_patterns.iter() {
         glob_builder.add(Glob::new(pattern)?);
     }
     let glob_set = glob_builder.build()?;
 
     let mut n_files = 0;
-    'file_loop: for entry in walker {
+    for entry in walker {
         let path = match entry {
             Ok(entry) => entry.path().to_path_buf(),
             Err(err) => {
@@ -129,49 +104,53 @@ pub fn input_files(
                 continue;
             }
         };
-
-        if path.is_file() {
-            n_files += 1;
-            if let Some(extension) = path.extension() {
-                // Skip non-text file by simply looking at extension
-                let extension = extension.to_string_lossy().to_lowercase();
-                if !TEXT_EXTENSIONS.contains(&extension.as_str()) {
-                    continue;
-                }
-                let path_string = path.display().to_string();
-                if glob_set.is_match(&path_string) {
-                    //println!("Summarazing this file: {}", path_string);
-                    match input_summary(&path, output) {
-                        Ok(()) => (),
-                        Err(e) => eprintln!("Error: {}", e),
-                    }
-                    continue 'file_loop;
-                }
-
-                // Write contents into output
-                let mut content = String::new();
-                let mut file = File::open(&path)?;
-                file.read_to_string(&mut content)?;
-                writeln!(
-                    output,
-                    "<File:{}>\n{}</File:{}>\n",
-                    path_string, content, path_string
-                )?;
-
-                paths.push(path_string.clone());
-                // Store size
-                let metadata = path.metadata()?;
-                let size_pair = (metadata.len(), path_string.clone());
-                if sizes.len() < 5 {
-                    sizes.insert(size_pair);
-                } else if let Some(smallest) = sizes.first().cloned() {
-                    if size_pair > smallest {
-                        sizes.remove(&smallest); // Remove the smallest element
-                        sizes.insert(size_pair);
-                    }
-                }
+        if !path.is_file() {
+            continue;
+        }
+        n_files += 1;
+        // Skip non-text file by looking at extension
+        if let Some(extension) = path.extension() {
+            let extension = extension.to_string_lossy().to_lowercase();
+            if !config.text_extensions.contains(&extension) {
+                continue;
             }
         }
+
+        let path_string = path.display().to_string();
+        if glob_set.is_match(&path_string) {
+            match input_summary(&path, output) {
+                Ok(()) => (),
+                Err(e) => eprintln!("Error: {}", e),
+            }
+            continue;
+        }
+
+        // Write contents into output
+        let mut content = String::new();
+        let mut file = File::open(&path)?;
+        file.read_to_string(&mut content)?;
+        writeln!(
+            output,
+            "<File:{}>\n{}</File:{}>\n",
+            path_string, content, path_string
+        )?;
+        paths.push(path_string.clone());
+
+        // Store size
+        let metadata = path.metadata()?;
+        let size_pair = (metadata.len(), path_string.clone());
+        if sizes.len() < 5 {
+            sizes.insert(size_pair);
+        } else if let Some(smallest) = sizes.first().cloned() {
+            if size_pair > smallest {
+                sizes.remove(&smallest); // Remove the smallest element
+                sizes.insert(size_pair);
+            }
+        }
+    }
+    if n_files == 0 {
+        println!("No files found");
+        return Ok(());
     }
 
     // Input paths
@@ -180,19 +159,16 @@ pub fn input_files(
         writeln!(output, "{}", p)?;
     }
     writeln!(output, "</All paths>")?;
-    if n_files > 0 {
-        println!(
-            "Biggest files completely written to output: path (size). Showing {} of {}",
-            std::cmp::min(5, sizes.len()),
-            n_files,
-        );
-        let mut count = 1;
-        for item in sizes.iter().rev() {
-            println!("{}: {} ({})", count, item.1, format_size(item.0));
-            count += 1;
-        }
-    } else {
-        println!("No files found");
+
+    println!(
+        "Biggest files completely written to output: path (size). Showing {} of {}",
+        std::cmp::min(5, sizes.len()),
+        n_files,
+    );
+    let mut count = 1;
+    for item in sizes.iter().rev() {
+        println!("{}: {} ({})", count, item.1, format_size(item.0));
+        count += 1;
     }
 
     Ok(())
@@ -216,5 +192,139 @@ pub fn format_size(size: u64) -> String {
         format!("{:.2} KB", size as f64 / KB as f64)
     } else {
         format!("{} B", size)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::setup_test_repo;
+    use std::fs;
+
+    #[test]
+    fn test_input_context() -> Result<(), Box<dyn Error>> {
+        let mut output = Vec::new();
+        input_context("test-repo", &mut output)?;
+
+        let result = String::from_utf8(output)?;
+        assert!(result.contains("You are an expert software engineer"));
+        assert!(result.contains("test-repo"));
+        assert!(result.starts_with("<context>"));
+        assert!(result.contains("</context>"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_input_repo_stats() -> Result<(), Box<dyn Error>> {
+        let (_temp_dir, config) = setup_test_repo()?;
+        let mut output = Vec::new();
+
+        input_repo_stats(&config.repo, &mut output)?;
+
+        let result = String::from_utf8(output)?;
+        assert!(result.contains("<Repo statistics>"));
+        assert!(result.contains("<Total commits>1</Total commits>"));
+        assert!(result.contains("<First commit>"));
+        assert!(result.contains("<Latest commits>"));
+        assert!(result.contains("</Repo statistics>"));
+        assert!(result.contains("<Last three commit messages>"));
+        assert!(result.contains("<Commit_message_0>Initial commit</Commit_message_0>"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_input_files() -> Result<(), Box<dyn Error>> {
+        let (_temp_dir, config) = setup_test_repo()?;
+
+        // Create additional test files
+        fs::write(
+            config.repo_path.join("test1.txt"),
+            "First test file content",
+        )?;
+        fs::write(
+            config.repo_path.join("test2.txt"),
+            "Second test file content",
+        )?;
+        fs::write(config.repo_path.join("test.json"), r#"{"key": "value"}"#)?;
+
+        let mut output = Vec::new();
+        input_files(&config, &mut output)?;
+
+        let result = String::from_utf8(output)?;
+
+        // Check if files are included
+        assert!(result.contains("<File:"));
+        assert!(result.contains("test1.txt"));
+        assert!(result.contains("test2.txt"));
+        assert!(result.contains("First test file content"));
+        assert!(result.contains("Second test file content"));
+
+        // Check if paths section exists
+        assert!(result.contains("<All paths>"));
+        assert!(result.contains("</All paths>"));
+
+        // Test file extension filtering
+        assert!(!result.contains("test.json")); // JSON files should be excluded by default
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_input_files_with_ignore_patterns() -> Result<(), Box<dyn Error>> {
+        let (_temp_dir, mut config) = setup_test_repo()?;
+
+        // Add ignore pattern
+        config.ignore_patterns = vec!["test1.txt".to_string()];
+
+        // Create test files
+        fs::write(config.repo_path.join("test1.txt"), "Should be ignored")?;
+        fs::write(config.repo_path.join("test2.txt"), "Should be included")?;
+
+        let mut output = Vec::new();
+        input_files(&config, &mut output)?;
+
+        let result = String::from_utf8(output)?;
+        assert!(!result.contains("Should be ignored"));
+        assert!(result.contains("Should be included"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_size() {
+        assert_eq!(format_size(500), "500 B");
+        assert_eq!(format_size(1024), "1.00 KB");
+        assert_eq!(format_size(1024 * 1024), "1.00 MB");
+        assert_eq!(format_size(1024 * 1024 * 1024), "1.00 GB");
+        assert_eq!(format_size(1024 * 1024 * 1024 * 1024), "1.00 TB");
+    }
+
+    #[test]
+    fn test_input_files_with_summarize_patterns() -> Result<(), Box<dyn Error>> {
+        let (_temp_dir, mut config) = setup_test_repo()?;
+
+        // Add summarize pattern for json files
+        config.summarize_patterns = vec!["**/*.json".to_string()];
+        config.text_extensions.insert("json".to_string());
+
+        // Create test files
+        fs::write(config.repo_path.join("test.txt"), "Regular text file")?;
+        fs::write(
+            config.repo_path.join("test.json"),
+            r#"{"key": "value", "array": [1,2,3]}"#,
+        )?;
+
+        let mut output = Vec::new();
+        input_files(&config, &mut output)?;
+
+        let result = String::from_utf8(output)?;
+        assert!(result.contains("<Summary of file:"));
+        assert!(result.contains("test.json"));
+        assert!(result.contains("<File:"));
+        assert!(result.contains("test.txt"));
+
+        Ok(())
     }
 }
