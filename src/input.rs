@@ -3,15 +3,10 @@ use crate::summary::input_summary;
 use git2::Repository;
 use globset::{Glob, GlobSetBuilder};
 use ignore::{overrides::OverrideBuilder, WalkBuilder};
-use rayon::prelude::*;
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs::File;
-use std::io::BufWriter;
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
-use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 
 pub fn input_context(repo_name: &str, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
@@ -79,7 +74,9 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
 }
 
 // Main workhorse which loops over all files in the repo
-pub fn input_files(config: &RepoConfig, output: &Mutex<impl Write>) -> Result<(), Box<dyn Error>> {
+pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
+    let mut sizes = BTreeSet::new();
+
     let mut override_builder = OverrideBuilder::new(&config.repo_path);
     for pattern in config.ignore_patterns.iter() {
         override_builder.add(&format!("!{}", pattern))?;
@@ -91,98 +88,85 @@ pub fn input_files(config: &RepoConfig, output: &Mutex<impl Write>) -> Result<()
         .overrides(overrides)
         .git_ignore(true)
         .build();
+    let mut paths = Vec::new();
     let mut glob_builder = GlobSetBuilder::new();
     for pattern in config.summarize_patterns.iter() {
         glob_builder.add(Glob::new(pattern)?);
     }
     let glob_set = glob_builder.build()?;
-    let n_files = AtomicUsize::new(0);
-    let paths = Mutex::new(Vec::new());
-    let sizes = Mutex::new(BTreeSet::new()); // Assuming this was your original set type
 
-    let paths_to_process: Vec<_> = walker
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().is_file())
-        .filter(|entry| {
-            if let Some(extension) = entry.path().extension() {
-                let extension = extension.to_string_lossy().to_lowercase();
-                config.text_extensions.contains(&extension)
-            } else {
-                false
+    let mut n_files = 0;
+    for entry in walker {
+        let path = match entry {
+            Ok(entry) => entry.path().to_path_buf(),
+            Err(err) => {
+                println!("ERROR: {}", err);
+                continue;
             }
-        })
-        .map(|entry| entry.path().to_path_buf())
-        .collect();
-    let output = Arc::new(Mutex::new(BufWriter::new(File::create("output.txt")?)));
-    let output_clone = Arc::clone(&output);
+        };
+        if !path.is_file() {
+            continue;
+        }
+        n_files += 1;
+        // Skip non-text file by looking at extension
+        if let Some(extension) = path.extension() {
+            let extension = extension.to_string_lossy().to_lowercase();
+            if !config.text_extensions.contains(&extension) {
+                continue;
+            }
+        }
 
-    let result: Result<(), std::io::Error> =
-        paths_to_process
-            .par_iter()
-            .try_for_each(|path| -> Result<(), std::io::Error> {
-                n_files.fetch_add(1, Ordering::SeqCst);
+        let path_string = path.display().to_string();
+        if glob_set.is_match(&path_string) {
+            match input_summary(&path, output) {
+                Ok(()) => (),
+                Err(e) => eprintln!("Error: {}", e),
+            }
+            continue;
+        }
 
-                let path_string = path.display().to_string();
+        // Write contents into output
+        let mut content = String::new();
+        let mut file = File::open(&path)?;
+        file.read_to_string(&mut content)?;
+        writeln!(
+            output,
+            "<File:{}>\n{}</File:{}>\n",
+            path_string, content, path_string
+        )?;
+        paths.push(path_string.clone());
 
-                // Read file contents
-                let mut content = String::new();
-                let mut file = File::open(&path)?;
-                file.read_to_string(&mut content)?;
-
-                // Thread-safe write to output
-                {
-                    let mut locked_output = output_clone.lock().expect("Failed to lock output");
-                    writeln!(
-                        locked_output,
-                        "<File:{}>\n{}</File:{}>\n",
-                        path_string, content, path_string
-                    )?;
-                }
-
-                // Thread-safe update to paths
-                paths.lock().unwrap().push(path_string.clone());
-
-                // Thread-safe update to sizes
-                let metadata = path.metadata()?;
-                let size_pair = (metadata.len(), path_string);
-
-                let mut sizes = sizes.lock().unwrap();
-                if sizes.len() < 5 {
-                    sizes.insert(size_pair);
-                } else if let Some(smallest) = sizes.first().cloned() {
-                    if size_pair > smallest {
-                        sizes.remove(&smallest);
-                        sizes.insert(size_pair);
-                    }
-                }
-
-                Ok(())
-            });
-
-    // After the parallel processing, n_files will contain the total
-    let final_n_files = n_files.load(Ordering::SeqCst);
-    if final_n_files == 0 {
+        // Store size
+        let metadata = path.metadata()?;
+        let size_pair = (metadata.len(), path_string.clone());
+        if sizes.len() < 5 {
+            sizes.insert(size_pair);
+        } else if let Some(smallest) = sizes.first().cloned() {
+            if size_pair > smallest {
+                sizes.remove(&smallest); // Remove the smallest element
+                sizes.insert(size_pair);
+            }
+        }
+    }
+    if n_files == 0 {
         println!("No files found");
         return Ok(());
     }
 
     // Input paths
-    let mut locked_output = output.lock().unwrap();
-    let locked_paths = paths.lock().unwrap();
-    writeln!(locked_output, "<All paths>")?;
-    // TODO: sort locked_paths
-    for p in locked_paths.iter() {
-        writeln!(locked_output, "{}", p)?;
+    writeln!(output, "<All paths>")?;
+    for p in paths.iter() {
+        writeln!(output, "{}", p)?;
     }
-    writeln!(locked_output, "</All paths>")?;
-    let locked_sizes = sizes.lock().unwrap();
+    writeln!(output, "</All paths>")?;
+
     println!(
         "Biggest files completely written to output: path (size). Showing {} of {}",
-        std::cmp::min(5, locked_sizes.len()),
-        final_n_files,
+        std::cmp::min(5, sizes.len()),
+        n_files,
     );
     let mut count = 1;
-    for item in locked_sizes.iter().rev() {
+    for item in sizes.iter().rev() {
         println!("{}: {} ({})", count, item.1, format_size(item.0));
         count += 1;
     }
