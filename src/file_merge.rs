@@ -1,11 +1,12 @@
 use crate::config::RepoConfig;
 use crate::input::{input_context, input_files, input_repo_stats};
 use copypasta::{ClipboardContext, ClipboardProvider};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::Cursor;
 use std::io::Write;
-
+use std::time::Duration;
 /// Main entry point for file concatenation functionality
 ///
 /// # Arguments
@@ -21,34 +22,43 @@ use std::io::Write;
 /// Either writes the repository summary to a file or copies it to the system clipboard,
 /// depending on the use_clipboard parameter
 pub fn merge_files(config: &RepoConfig) -> Result<(), Box<dyn Error>> {
+    let mut target_string = "".to_string();
+    let durations: WriteDurations;
+    let duration_total: Duration;
     if config.use_clipboard {
+        target_string.push_str("clipboard");
         let mut buffer = Vec::new();
         let mut output = Cursor::new(&mut buffer);
-        write_repo_content(config, &mut output)?;
+        durations = write_repo_content(config, &mut output)?;
 
         let content = String::from_utf8(buffer)?;
         let mut ctx = ClipboardContext::new().unwrap();
         ctx.set_contents(content.to_owned()).unwrap();
 
-        let duration = config.created_at.elapsed();
-        println!(
-            "Repo contents copied to clipboard. Took {:.2}s",
-            duration.as_secs_f64()
-        );
+        duration_total = config.created_at.elapsed();
     } else {
+        target_string.push_str(&format!("file {}", &config.output_file.display()));
         let mut file = File::create(&config.output_file)?;
-        write_repo_content(config, &mut file)?;
-        let duration = config.created_at.elapsed();
-        println!(
-            "Repo contents written to file: {}. Took {:.2}s",
-            &config.output_file.display(),
-            duration.as_secs_f64()
-        );
+        durations = write_repo_content(config, &mut file)?;
+        duration_total = config.created_at.elapsed();
     }
+
+    let duration_total_seconds = duration_total.as_secs_f64();
+
+    println!(
+        "Repo contents copied to {} in {:.1}s. {:.1}s for file merging, {:.1}s for repo statistics",
+        target_string,
+        duration_total_seconds,
+        durations.files.as_secs_f64(),
+        durations.stats.as_secs_f64()
+    );
 
     Ok(())
 }
-
+pub struct WriteDurations {
+    pub files: Duration,
+    pub stats: Duration,
+}
 /// Coordinates the writing of all repository content
 ///
 /// # Arguments
@@ -57,12 +67,26 @@ pub fn merge_files(config: &RepoConfig) -> Result<(), Box<dyn Error>> {
 ///
 /// # Returns
 /// * `Result<(), Box<dyn Error>>` - Success or error during writing
-fn write_repo_content(config: &RepoConfig, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
-    input_context(&config.repo_name, output)?;
-    input_repo_stats(&config.repo, output)?;
-    input_files(config, output)?;
+fn write_repo_content(
+    config: &RepoConfig,
+    output: &mut impl Write,
+) -> Result<WriteDurations, Box<dyn Error>> {
+    let mut durations = HashMap::new();
 
-    Ok(())
+    input_context(&config.repo_name, output)?;
+    let mut now = std::time::Instant::now();
+    input_repo_stats(&config.repo, output)?;
+    let duration_stats = now.elapsed();
+    durations.insert("stats".to_string(), duration_stats);
+    now = std::time::Instant::now();
+    input_files(config, output)?;
+    let duration_files = now.elapsed();
+    durations.insert("files".to_string(), duration_files);
+
+    Ok(WriteDurations {
+        files: duration_files,
+        stats: duration_stats,
+    })
 }
 
 #[cfg(test)]
