@@ -1,7 +1,6 @@
 use crate::config::RepoConfig;
 use crate::input::{input_context, input_files, input_repo_stats};
 use copypasta::{ClipboardContext, ClipboardProvider};
-use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::Cursor;
@@ -74,17 +73,13 @@ fn write_repo_content(
     config: &RepoConfig,
     output: &mut impl Write,
 ) -> Result<WriteDurations, Box<dyn Error>> {
-    let mut durations = HashMap::new();
-
     input_context(&config.repo_name, output)?;
     let mut now = std::time::Instant::now();
-    input_repo_stats(&config.repo, output)?;
+    input_repo_stats(&config, output)?;
     let duration_stats = now.elapsed();
-    durations.insert("stats".to_string(), duration_stats);
     now = std::time::Instant::now();
     input_files(config, output)?;
     let duration_files = now.elapsed();
-    durations.insert("files".to_string(), duration_files);
 
     Ok(WriteDurations {
         files: duration_files,

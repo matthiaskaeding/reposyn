@@ -1,6 +1,5 @@
 use crate::config::RepoConfig;
 use crate::summary::input_summary;
-use git2::Repository;
 use globset::{Glob, GlobSetBuilder};
 use ignore::{overrides::OverrideBuilder, WalkBuilder};
 use std::collections::BTreeSet;
@@ -20,7 +19,12 @@ pub fn input_context(repo_name: &str, output: &mut impl Write) -> Result<(), Box
     Ok(())
 }
 
-pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
+pub fn input_repo_stats(
+    config: &RepoConfig,
+    output: &mut impl Write,
+) -> Result<(), Box<dyn Error>> {
+    let repo = config.open_repo().expect("failed to open repo");
+
     let mut revwalk = repo.revwalk()?;
     revwalk.push_head()?;
     revwalk.set_sorting(git2::Sort::TIME)?;
@@ -250,7 +254,7 @@ mod tests {
     fn test_input_repo_stats() -> Result<(), Box<dyn Error>> {
         let (_temp_dir, config) = setup_test_repo()?;
         let mut output = Vec::new();
-        input_repo_stats(&config.repo, &mut output)?;
+        input_repo_stats(&config, &mut output)?;
         let result = String::from_utf8(output)?;
         println!("{}", result);
 
