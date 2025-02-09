@@ -67,7 +67,7 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
 
     if let Some(latest) = latest_time {
         let timestamp = OffsetDateTime::from_unix_timestamp(latest)?;
-        let msg_first = format!("<First commit>{}</First commit>\n", timestamp);
+        let msg_first = format!("<Latest commit>{}</Latest commit>\n", timestamp);
         buffer.push_str(&msg_first);
     }
 
@@ -82,7 +82,7 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
 
         if let Some(first) = first_time {
             let timestamp = OffsetDateTime::from_unix_timestamp(first)?;
-            let msg_first = format!("<Latest commit>{}</Latest commit>\n", timestamp);
+            let msg_first = format!("<First commit>{}</First commit>\n", timestamp);
             buffer.push_str(&msg_first);
         }
     }
