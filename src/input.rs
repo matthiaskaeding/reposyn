@@ -27,55 +27,77 @@ pub fn input_repo_stats(
 
     let mut revwalk = repo.revwalk()?;
     revwalk.push_head()?;
+    revwalk.set_sorting(git2::Sort::TIME)?;
+
+    let n_commits = revwalk.count();
+
+    revwalk = repo.revwalk()?;
+    revwalk.push_head()?;
+
+    let mut latest_time = None;
 
     let mut count = 0;
-    let mut first_time = None;
-    let mut latest_time = None;
-    let mut recent_messages = Vec::new();
+
+    let mut buffer = String::with_capacity(100);
+
+    buffer.push_str("<Repo statistics>\n");
+    let line = format!("<Number of commits>{}</Number of commits>\n", n_commits);
+    buffer.push_str(&line);
+    buffer.push_str("<Recent commits, most recent first>\n");
 
     for commit_id in revwalk {
         let commit = repo.find_commit(commit_id?)?;
-        let time = commit.time().seconds();
-
         if count == 0 {
+            let time = commit.time().seconds();
             latest_time = Some(time);
         }
-        if count < 3 {
-            if let Some(msg) = commit.message() {
-                recent_messages.push(msg.to_string());
-            }
+        if let Some(msg) = commit.message() {
+            let msg_clean: String = msg
+                .lines()
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<&str>>()
+                .join("\n");
+
+            let line = format!("<commit_{}>{}\n", count, msg_clean);
+            buffer.push_str(&line); // Push the owned String, not a reference
         }
 
-        first_time = Some(time);
         count += 1;
+        if count == 3 {
+            break;
+        }
+    }
+    buffer.push_str("</Recent commits, most recent first>\n");
+
+    if let Some(latest) = latest_time {
+        let timestamp = OffsetDateTime::from_unix_timestamp(latest)?;
+        let msg_first = format!("<Latest commit>{}</Latest commit>\n", timestamp);
+        buffer.push_str(&msg_first);
     }
 
-    writeln!(output, "<Repo statistics>")?;
-    if let (Some(first), Some(latest)) = (first_time, latest_time) {
-        let first_date = OffsetDateTime::from_unix_timestamp(first)?;
-        let latest_date = OffsetDateTime::from_unix_timestamp(latest)?;
-        writeln!(output, "<Total commits>{}</Total commits>", count)?;
-        writeln!(output, "<First commit>{}</First commit>", first_date)?;
-        writeln!(output, "<Latest commits>{}</Latest commits>", latest_date)?;
-    }
-    writeln!(output, "</Repo statistics>")?;
+    revwalk = repo.revwalk()?;
+    revwalk.push_head()?;
 
-    writeln!(output, "<Last three commit messages>")?;
-    for (i, msg) in recent_messages.iter().enumerate() {
-        let msg_clean: String = msg
-            .lines()
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<&str>>()
-            .join("\n");
-        writeln!(
-            output,
-            "<Commit_message_{}>{}</Commit_message_{}>",
-            i, msg_clean, i,
-        )?;
+    let first_commit = revwalk.last();
+    if let Some(first_commit_id) = first_commit {
+        let commit = repo.find_commit(first_commit_id?)?;
+        let time = commit.time().seconds();
+        let first_time = Some(time);
+
+        if let Some(first) = first_time {
+            let timestamp = OffsetDateTime::from_unix_timestamp(first)?;
+            let msg_first = format!("<First commit>{}</First commit>\n", timestamp);
+            buffer.push_str(&msg_first);
+        }
     }
-    writeln!(output, "</Last three commit messages>\n\n")?;
+
+    buffer.push_str("</Repo statistics>\n");
+
+    output.write_all(buffer.as_bytes())?;
     Ok(())
 }
+
+const BUFFER_THRESHOLD: usize = 10 * 1024 * 1024; // 10MB
 
 // Main workhorse which loops over all files in the repo
 pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
@@ -100,6 +122,8 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
     let glob_set = glob_builder.build()?;
 
     let mut n_files = 0;
+    let mut lines = String::with_capacity(100);
+
     for entry in walker {
         let path = match entry {
             Ok(entry) => entry.path().to_path_buf(),
@@ -133,11 +157,17 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
         let mut content = String::new();
         let mut file = File::open(&path)?;
         file.read_to_string(&mut content)?;
-        writeln!(
-            output,
+
+        let line = format!(
             "<File:{}>\n{}</File:{}>\n",
             path_string, content, path_string
-        )?;
+        );
+        lines.push_str(&line);
+        // Reset if buffer
+        if lines.len() > BUFFER_THRESHOLD {
+            output.write_all(lines.as_bytes())?;
+            lines.clear();
+        }
         paths.push(path_string.clone());
 
         // Store size
@@ -158,11 +188,11 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
     }
 
     // Input paths
-    writeln!(output, "<All paths>")?;
+    lines.push_str("<All paths>\n");
     for p in paths.iter() {
-        writeln!(output, "{}", p)?;
+        lines.push_str(p);
     }
-    writeln!(output, "</All paths>")?;
+    lines.push_str("</All paths>\n");
 
     println!(
         "Biggest files completely written to output: path (size). Showing {} of {}",
@@ -175,6 +205,7 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
         count += 1;
     }
 
+    output.write_all(lines.as_bytes())?;
     Ok(())
 }
 
@@ -223,17 +254,25 @@ mod tests {
     fn test_input_repo_stats() -> Result<(), Box<dyn Error>> {
         let (_temp_dir, config) = setup_test_repo()?;
         let mut output = Vec::new();
-
         input_repo_stats(&config, &mut output)?;
-
         let result = String::from_utf8(output)?;
+        println!("{}", result);
+
+        // Check all required tags and content
         assert!(result.contains("<Repo statistics>"));
-        assert!(result.contains("<Total commits>1</Total commits>"));
-        assert!(result.contains("<First commit>"));
-        assert!(result.contains("<Latest commits>"));
         assert!(result.contains("</Repo statistics>"));
-        assert!(result.contains("<Last three commit messages>"));
-        assert!(result.contains("<Commit_message_0>Initial commit</Commit_message_0>"));
+        assert!(result.contains("<Number of commits>1</Number of commits>"));
+        assert!(result.contains("<Recent commits, most recent first>"));
+        assert!(result.contains("</Recent commits, most recent first>"));
+
+        // Check commit message format
+        assert!(result.contains("<commit_0>Initial commit"));
+
+        // Check timestamp tags
+        assert!(result.contains("<First commit>"));
+        assert!(result.contains("</First commit>"));
+        assert!(result.contains("<Latest commit>"));
+        assert!(result.contains("</Latest commit>"));
 
         Ok(())
     }

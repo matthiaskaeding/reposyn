@@ -170,7 +170,7 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Rust 
+# Rust
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -344,15 +344,11 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Requests github folder as test case
-requests/
-
 # Output file
 repo-synopsis.txt
-
-repo-synopsis.md
 .vscode/
 cspell.config.yaml
 
 .DS_Store
-rust
+# Test repos
+tests/repos/
