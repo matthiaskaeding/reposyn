@@ -5,8 +5,9 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::Cursor;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::time::Duration;
+
 /// Main entry point for file concatenation functionality
 ///
 /// # Arguments
@@ -38,8 +39,10 @@ pub fn merge_files(config: &RepoConfig) -> Result<(), Box<dyn Error>> {
         duration_total = config.created_at.elapsed();
     } else {
         target_string.push_str(&format!("file {}", &config.output_file.display()));
-        let mut file = File::create(&config.output_file)?;
-        durations = write_repo_content(config, &mut file)?;
+        let file = File::create(&config.output_file)?;
+        let mut output = BufWriter::new(file);
+        durations = write_repo_content(config, &mut output)?;
+        output.flush()?;
         duration_total = config.created_at.elapsed();
     }
 

@@ -88,7 +88,6 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
     }
 
     lines.push(String::from("</Repo statistics>"));
-    // Basic approach using write!() and writeln!()
     for line in &lines {
         writeln!(output, "{}", line)?;
     }
@@ -119,6 +118,8 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
     let glob_set = glob_builder.build()?;
 
     let mut n_files = 0;
+    let mut lines: Vec<String> = Vec::new();
+
     for entry in walker {
         let path = match entry {
             Ok(entry) => entry.path().to_path_buf(),
@@ -152,11 +153,9 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
         let mut content = String::new();
         let mut file = File::open(&path)?;
         file.read_to_string(&mut content)?;
-        writeln!(
-            output,
-            "<File:{}>\n{}</File:{}>\n",
-            path_string, content, path_string
-        )?;
+
+        let line = format!("<File:{}>\n{}</File:{}>", path_string, content, path_string);
+        lines.push(line);
         paths.push(path_string.clone());
 
         // Store size
@@ -177,11 +176,11 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
     }
 
     // Input paths
-    writeln!(output, "<All paths>")?;
+    lines.push(String::from("<All paths>"));
     for p in paths.iter() {
-        writeln!(output, "{}", p)?;
+        lines.push(String::from(p));
     }
-    writeln!(output, "</All paths>")?;
+    lines.push(String::from("</All paths>"));
 
     println!(
         "Biggest files completely written to output: path (size). Showing {} of {}",
@@ -192,6 +191,10 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
     for item in sizes.iter().rev() {
         println!("{}: {} ({})", count, item.1, format_size(item.0));
         count += 1;
+    }
+
+    for line in &lines {
+        writeln!(output, "{}", line)?;
     }
 
     Ok(())
