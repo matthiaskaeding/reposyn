@@ -34,12 +34,12 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
 
     let mut count = 0;
 
-    let mut lines: Vec<String> = Vec::new();
+    let mut buffer = String::with_capacity(100);
 
-    lines.push(String::from("<Repo statistics>"));
-    let line = format!("<Number of commits>{}</Number of commits>", n_commits);
-    lines.push(line);
-    lines.push(String::from("<Recent commits, most recent first>"));
+    buffer.push_str("<Repo statistics>\n");
+    let line = format!("<Number of commits>{}</Number of commits>\n", n_commits);
+    buffer.push_str(&line);
+    buffer.push_str("<Recent commits, most recent first>\n");
 
     for commit_id in revwalk {
         let commit = repo.find_commit(commit_id?)?;
@@ -54,8 +54,8 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
                 .collect::<Vec<&str>>()
                 .join("\n");
 
-            let line = format!("<commit_{}>{}", count, msg_clean);
-            lines.push(line); // Push the owned String, not a reference
+            let line = format!("<commit_{}>{}\n", count, msg_clean);
+            buffer.push_str(&line); // Push the owned String, not a reference
         }
 
         count += 1;
@@ -63,12 +63,12 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
             break;
         }
     }
-    lines.push(String::from("</Recent commits, most recent first>"));
+    buffer.push_str("</Recent commits, most recent first>\n");
 
     if let Some(latest) = latest_time {
         let timestamp = OffsetDateTime::from_unix_timestamp(latest)?;
-        let msg_first = format!("<First commit>{}</First commit>", timestamp);
-        lines.push(msg_first);
+        let msg_first = format!("<First commit>{}</First commit>\n", timestamp);
+        buffer.push_str(&msg_first);
     }
 
     revwalk = repo.revwalk()?;
@@ -82,16 +82,14 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
 
         if let Some(first) = first_time {
             let timestamp = OffsetDateTime::from_unix_timestamp(first)?;
-            let msg_first = format!("<Latest commit>{}</Latest commit>", timestamp);
-            lines.push(msg_first);
+            let msg_first = format!("<Latest commit>{}</Latest commit>\n", timestamp);
+            buffer.push_str(&msg_first);
         }
     }
 
-    lines.push(String::from("</Repo statistics>"));
-    for line in &lines {
-        writeln!(output, "{}", line)?;
-    }
+    buffer.push_str("</Repo statistics>\n");
 
+    output.write_all(buffer.as_bytes())?;
     Ok(())
 }
 
@@ -176,11 +174,11 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
     }
 
     // Input paths
-    lines.push(String::from("<All paths>"));
+    lines.push("<All paths>".to_string());
     for p in paths.iter() {
-        lines.push(String::from(p));
+        lines.push(p.clone());
     }
-    lines.push(String::from("</All paths>"));
+    lines.push("</All paths>".to_string());
 
     println!(
         "Biggest files completely written to output: path (size). Showing {} of {}",
@@ -193,9 +191,7 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
         count += 1;
     }
 
-    for line in &lines {
-        writeln!(output, "{}", line)?;
-    }
+    writeln!(output, "{}", lines.join("\n"))?;
 
     Ok(())
 }
