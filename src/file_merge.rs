@@ -75,7 +75,7 @@ fn write_repo_content(
 ) -> Result<WriteDurations, Box<dyn Error>> {
     input_context(&config.repo_name, output)?;
     let mut now = std::time::Instant::now();
-    input_repo_stats(&config, output)?;
+    input_repo_stats(config, output)?;
     let duration_stats = now.elapsed();
     now = std::time::Instant::now();
     input_files(config, output)?;
