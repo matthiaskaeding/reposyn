@@ -93,6 +93,8 @@ pub fn input_repo_stats(repo: &Repository, output: &mut impl Write) -> Result<()
     Ok(())
 }
 
+const BUFFER_THRESHOLD: usize = 10 * 1024 * 1024; // 10MB
+
 // Main workhorse which loops over all files in the repo
 pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     let mut sizes = BTreeSet::new();
@@ -116,7 +118,7 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
     let glob_set = glob_builder.build()?;
 
     let mut n_files = 0;
-    let mut lines: Vec<String> = Vec::new();
+    let mut lines = String::with_capacity(100);
 
     for entry in walker {
         let path = match entry {
@@ -152,8 +154,16 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
         let mut file = File::open(&path)?;
         file.read_to_string(&mut content)?;
 
-        let line = format!("<File:{}>\n{}</File:{}>", path_string, content, path_string);
-        lines.push(line);
+        let line = format!(
+            "<File:{}>\n{}</File:{}>\n",
+            path_string, content, path_string
+        );
+        lines.push_str(&line);
+        // Reset if buffer
+        if lines.len() > BUFFER_THRESHOLD {
+            output.write_all(lines.as_bytes())?;
+            lines.clear();
+        }
         paths.push(path_string.clone());
 
         // Store size
@@ -174,11 +184,11 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
     }
 
     // Input paths
-    lines.push("<All paths>".to_string());
+    lines.push_str("<All paths>\n");
     for p in paths.iter() {
-        lines.push(p.clone());
+        lines.push_str(p);
     }
-    lines.push("</All paths>".to_string());
+    lines.push_str("</All paths>\n");
 
     println!(
         "Biggest files completely written to output: path (size). Showing {} of {}",
@@ -191,8 +201,7 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
         count += 1;
     }
 
-    writeln!(output, "{}", lines.join("\n"))?;
-
+    output.write_all(lines.as_bytes())?;
     Ok(())
 }
 
