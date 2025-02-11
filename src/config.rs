@@ -10,10 +10,10 @@ pub struct RepoConfig {
     pub ignore_patterns: Vec<String>,
     pub summarize_patterns: Vec<String>,
     pub created_at: std::time::Instant,
-
+    pub thr: f64,
     pub text_extensions: HashSet<String>,
 }
-
+#[allow(clippy::too_many_arguments)]
 impl RepoConfig {
     pub fn new(
         repo_path: std::path::PathBuf,
@@ -23,6 +23,7 @@ impl RepoConfig {
         summarize_patterns: Vec<String>,
         text_extensions: HashSet<String>,
         created_at: std::time::Instant,
+        thr: f64,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Check if path exists
         if !repo_path.exists() {
@@ -48,6 +49,7 @@ impl RepoConfig {
             ignore_patterns,
             summarize_patterns,
             created_at,
+            thr,
             text_extensions,
         })
     }

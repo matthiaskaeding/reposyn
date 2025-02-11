@@ -10,8 +10,22 @@ use time::OffsetDateTime;
 
 pub fn input_context(repo_name: &str, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     let prompt = format!(
-        r#"You are an expert software engineer who receives a summary of repo called {}.
-    Analyze the repo, understand the problem the repo is solving."#,
+        r#"1. You are an expert software engineer analyzing code repositories
+        2. You will receive a text summary of git repo ({})
+        3. Analyze the following aspects:
+           - Architecture and design patterns
+           - Code quality and maintainability
+           - Performance considerations
+           - Security implications
+        4. Provide a concise summary (max 3 paragraphs) covering:
+           - Core functionality
+           - Technical implementation
+           - Key design decisions
+        5. When suggesting improvements:
+           - Rank by business impact and implementation effort
+           - Include brief justification for each
+           - Focus on actionable recommendations
+        "#,
         repo_name
     );
     writeln!(output, "<context>{}</context>\n\n", prompt)?;
@@ -145,7 +159,10 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
         }
 
         let path_string = path.display().to_string();
-        if glob_set.is_match(&path_string) {
+
+        let metadata = path.metadata()?;
+        let size_in_kb = metadata.len() as f64 / 1024.0;
+        if glob_set.is_match(&path_string) || size_in_kb > config.thr {
             match input_summary(&path, output) {
                 Ok(()) => (),
                 Err(e) => eprintln!("Error: {}", e),
@@ -171,7 +188,6 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
         paths.push(path_string.clone());
 
         // Store size
-        let metadata = path.metadata()?;
         let size_pair = (metadata.len(), path_string.clone());
         if sizes.len() < 5 {
             sizes.insert(size_pair);
