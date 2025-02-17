@@ -45,18 +45,19 @@ pub fn merge_files(config: &RepoConfig) -> Result<(), Box<dyn Error>> {
         duration_total = config.created_at.elapsed();
     }
 
-    let duration_total_seconds = duration_total.as_secs_f64();
+    let duration_total_seconds = duration_total.as_millis();
 
     println!(
-        "Repo contents copied to {}.\nTook {:.1}s, {:.1}s for file merging, {:.1}s for repo statistics",
+        "Repo contents copied to {} in {:.1}ms ({:.1}ms for file merging, {:.1}ms for repo statistics)",
         target_string,
         duration_total_seconds,
-        durations.files.as_secs_f64(),
-        durations.stats.as_secs_f64()
+        durations.files.as_millis(),
+        durations.stats.as_millis()
     );
 
     Ok(())
 }
+
 pub struct WriteDurations {
     pub files: Duration,
     pub stats: Duration,
