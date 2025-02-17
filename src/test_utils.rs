@@ -26,7 +26,6 @@ pub(crate) fn setup_test_repo() -> Result<(TempDir, RepoConfig), Box<dyn Error>>
     let mut index = repo.index()?;
     index.add_path(std::path::Path::new("test.txt"))?;
     index.write()?;
-
     let tree_id = index.write_tree()?;
     let tree = repo.find_tree(tree_id)?;
     let signature = git2::Signature::now("Test User", "test@example.com")?;
@@ -38,20 +37,21 @@ pub(crate) fn setup_test_repo() -> Result<(TempDir, RepoConfig), Box<dyn Error>>
         &tree,
         &[],
     )?;
-    let output_file = temp_dir
-        .path()
-        .join("test_output.txt")
-        .to_string_lossy()
-        .into_owned();
+
+    // Create RepoConfig with correct parameters
     let config = RepoConfig::new(
-        repo_path,
-        false,
-        output_file,
-        Vec::new(),
-        Vec::new(),
-        HashSet::from(["txt".to_string()]),
-        Instant::now(),
-        500.0,
+        false,                                          // use_clipboard
+        temp_dir.path().to_string_lossy().into_owned(), // input_folder as String
+        temp_dir
+            .path()
+            .join("test_output.txt")
+            .to_string_lossy()
+            .into_owned(), // output_file as String
+        Vec::new(),                                     // ignore_patterns
+        Vec::new(),                                     // summarize_patterns
+        HashSet::from(["txt".to_string()]),             // text_extensions
+        Instant::now(),                                 // created_at
+        500.0,                                          // thr
     )?;
 
     Ok((temp_dir, config))

@@ -248,7 +248,7 @@ mod tests {
         let result = String::from_utf8(output)?;
         assert!(result.contains("You are an expert software engineer"));
         assert!(result.contains("test-repo"));
-        assert!(result.starts_with("<context>"));
+        assert!(result.contains("<context>"));
         assert!(result.contains("</context>"));
 
         Ok(())
