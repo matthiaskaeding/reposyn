@@ -1,9 +1,9 @@
 use git2::Repository;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::Path;
 
-fn find_git_repository(start_dir: &PathBuf) -> Option<std::path::PathBuf> {
-    let mut current_dir = start_dir.clone();
+fn find_git_repository(start_dir: &Path) -> Option<std::path::PathBuf> {
+    let mut current_dir = start_dir.to_path_buf();
 
     loop {
         let git_dir = current_dir.join(".git");
