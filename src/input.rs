@@ -10,11 +10,13 @@ use time::OffsetDateTime;
 
 pub fn input_context(repo_name: &str, output: &mut impl Write) -> Result<(), Box<dyn Error>> {
     let prompt = format!(
-        r#"You are an expert software engineer who receives a summary of repo called {}.
-    Analyze the repo, understand the problem the repo is solving."#,
+        r#"1. You are an expert software engineer analyzing code repositories
+2. You received a text summary of git repo ({})
+3. Think about the contents and understand the purpose of the code.
+"#,
         repo_name
     );
-    writeln!(output, "<context>{}</context>\n\n", prompt)?;
+    writeln!(output, "\n<context>\n{}</context>\n\n", prompt)?;
 
     Ok(())
 }
@@ -145,7 +147,10 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
         }
 
         let path_string = path.display().to_string();
-        if glob_set.is_match(&path_string) {
+
+        let metadata = path.metadata()?;
+        let size_in_kb = metadata.len() as f64 / 1024.0;
+        if glob_set.is_match(&path_string) || size_in_kb > config.thr {
             match input_summary(&path, output) {
                 Ok(()) => (),
                 Err(e) => eprintln!("Error: {}", e),
@@ -171,7 +176,6 @@ pub fn input_files(config: &RepoConfig, output: &mut impl Write) -> Result<(), B
         paths.push(path_string.clone());
 
         // Store size
-        let metadata = path.metadata()?;
         let size_pair = (metadata.len(), path_string.clone());
         if sizes.len() < 5 {
             sizes.insert(size_pair);
@@ -244,7 +248,7 @@ mod tests {
         let result = String::from_utf8(output)?;
         assert!(result.contains("You are an expert software engineer"));
         assert!(result.contains("test-repo"));
-        assert!(result.starts_with("<context>"));
+        assert!(result.contains("<context>"));
         assert!(result.contains("</context>"));
 
         Ok(())

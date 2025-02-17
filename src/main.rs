@@ -18,11 +18,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .author("Matthias Kaeding <kaedingmatthias@gmail.com>")
         .about("Creates AI-friendly text summary of a repo")
         .arg(
-            Arg::new("input_folder")
-                .short('f')
+            Arg::new("target_folder")
+                .short('t')
                 .long("folder")
                 .value_name("DIR")
-                .help("Folder to summarize")
+                .help("Folder to summarize, must be within a git repo")
                 .default_value("./"),
         )
         .arg(
@@ -62,17 +62,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .long("extensions")
                 .help("Comma seperated string of extensions marking text files - other files will not be included")
                 .default_value(
-                    "bash,conf,css,csv,htm,html,js,json,md,py,rs,sh,toml,txt,xml,yaml,yml",
+                    "bash,conf,css,csv,go,htm,html,js,json,md,py,r,rs,sh,toml,txt,xml,yaml,yml",
                 ),
         )
+        .arg(
+            Arg::new("thr")
+                .long("thr")
+                .help("Files larger than this threshold (kb) will be summarized")
+                .default_value(
+                    "128",
+                ),
+            )
         .get_matches();
 
     let created_at = std::time::Instant::now();
     let input_folder = matches
-        .get_one::<String>("input_folder")
+        .get_one::<String>("target_folder")
         .unwrap()
         .to_string();
-    let repo_path = std::path::PathBuf::from(input_folder);
     let ignore = matches.get_one::<String>("ignore").unwrap();
     let summarize = matches.get_one::<String>("summarize").unwrap();
     let output_file = matches
@@ -81,6 +88,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_string();
     let use_clipboard = matches.get_flag("clipboard");
     let extensions = matches.get_one::<String>("extensions_text").unwrap();
+    let thr = matches
+        .get_one::<String>("thr")
+        .unwrap()
+        .parse::<f64>()
+        .unwrap();
 
     let ignore_patterns: Vec<String> = if ignore.is_empty() {
         Vec::new()
@@ -106,13 +118,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let config = RepoConfig::new(
-        repo_path,
         use_clipboard,
+        input_folder,
         output_file,
         ignore_patterns,
         summarize_patterns,
         text_extensions,
         created_at,
+        thr,
     )?;
 
     file_merge::merge_files(&config)?;

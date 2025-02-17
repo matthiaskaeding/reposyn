@@ -51,3 +51,10 @@ test-setup-ripgrep:
 run-rust:
 	@echo "Running reposyn on rust repo. Takes about 10 seconds"
 	cargo run -- -f tests/repos/rust
+
+run:
+	@echo "Running reposyn on rust repo. Takes about 10 seconds"
+	cargo run
+
+install:
+	cargo install --path .
