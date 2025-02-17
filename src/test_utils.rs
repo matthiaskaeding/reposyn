@@ -51,6 +51,7 @@ pub(crate) fn setup_test_repo() -> Result<(TempDir, RepoConfig), Box<dyn Error>>
         Vec::new(),
         HashSet::from(["txt".to_string()]),
         Instant::now(),
+        500.0,
     )?;
 
     Ok((temp_dir, config))
