@@ -65,6 +65,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "bash,conf,css,csv,htm,html,js,json,md,py,rs,sh,toml,txt,xml,yaml,yml",
                 ),
         )
+        .arg(
+            Arg::new("thr_summary")
+                .short('t')
+                .long("thr_summary")
+                .help("Files larger than this threshold (kb) will be summarized")
+                .default_value(
+                    "64",
+                ),
+            )
         .get_matches();
 
     let created_at = std::time::Instant::now();
@@ -81,6 +90,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_string();
     let use_clipboard = matches.get_flag("clipboard");
     let extensions = matches.get_one::<String>("extensions_text").unwrap();
+    let thr = matches
+        .get_one::<String>("thr_summary")
+        .unwrap()
+        .parse::<f64>()
+        .unwrap();
 
     let ignore_patterns: Vec<String> = if ignore.is_empty() {
         Vec::new()
@@ -113,6 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         summarize_patterns,
         text_extensions,
         created_at,
+        thr,
     )?;
 
     file_merge::merge_files(&config)?;

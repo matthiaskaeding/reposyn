@@ -48,7 +48,7 @@ pub fn merge_files(config: &RepoConfig) -> Result<(), Box<dyn Error>> {
     let duration_total_seconds = duration_total.as_secs_f64();
 
     println!(
-        "Repo contents copied to {} in {:.1}s. {:.1}s for file merging, {:.1}s for repo statistics",
+        "Repo contents copied to {}.\nTook {:.1}s, {:.1}s for file merging, {:.1}s for repo statistics",
         target_string,
         duration_total_seconds,
         durations.files.as_secs_f64(),
@@ -73,13 +73,13 @@ fn write_repo_content(
     config: &RepoConfig,
     output: &mut impl Write,
 ) -> Result<WriteDurations, Box<dyn Error>> {
-    input_context(&config.repo_name, output)?;
     let mut now = std::time::Instant::now();
     input_repo_stats(config, output)?;
     let duration_stats = now.elapsed();
     now = std::time::Instant::now();
     input_files(config, output)?;
     let duration_files = now.elapsed();
+    input_context(&config.repo_name, output)?;
 
     Ok(WriteDurations {
         files: duration_files,
